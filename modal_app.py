@@ -1,18 +1,30 @@
 import modal
 
+
 image = modal.Image.debian_slim().pip_install(
-    "fastapi[standard]"
+    "fastapi[standard]",
+    "openai"
 )
+
 
 app = modal.App("mini-agent")
 
 
-@app.function(image=image)
+secret = modal.Secret.from_name("openrouter-secret")
+
+
+@app.function(
+    image=image,
+    secrets=[secret]
+)
 @modal.fastapi_endpoint(method="POST")
 def chat(message: dict):
+
+    from agent import run_agent
+
     user_message = message.get("message", "")
 
     return {
-        "answer": f"Agent received: {user_message}"
+        "answer": run_agent(user_message)
     }
 
