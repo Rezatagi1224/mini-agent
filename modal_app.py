@@ -2,13 +2,10 @@ import modal
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
+
 image = (
     modal.Image.debian_slim()
-    .pip_install(
-        "fastapi[standard]",
-        "openai",
-        "openai-agents",
-    )
+    .pip_install_from_requirements("requirements.txt")
     .add_local_python_source(
         "agent",
         "tools",
@@ -19,11 +16,14 @@ image = (
     )
 )
 
+
 app = modal.App("mini-agent")
+
 
 secret = modal.Secret.from_name(
     "openrouter-secret"
 )
+
 
 web_app = FastAPI()
 
@@ -75,3 +75,4 @@ async def chat(message: dict):
 @modal.asgi_app()
 def web():
     return web_app
+
