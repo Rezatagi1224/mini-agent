@@ -1,27 +1,62 @@
 import os
-from openai import OpenAI
+
+from openai import AsyncOpenAI
+
+from agents import (
+    Agent,
+    Runner,
+    OpenAIChatCompletionsModel,
+    set_tracing_disabled,
+)
+
+from tools import calculator
 
 
-def run_agent(message: str) -> str:
+set_tracing_disabled(True)
 
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.environ["OPENROUTER_API_KEY"]
+
+client = AsyncOpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.environ["OPENROUTER_API_KEY"],
+)
+
+
+model = OpenAIChatCompletionsModel(
+    model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    openai_client=client,
+)
+
+
+agent = Agent(
+    name="Commercial Agent",
+
+    instructions="""
+    You are a professional commercial AI agent.
+
+    Your job is to understand the user's request,
+    decide whether a tool is necessary,
+    use the appropriate tool when needed,
+    and then provide a clear final answer.
+
+    Available tools:
+    - calculator: for mathematical calculations.
+
+    Never pretend that a tool was executed when it was not.
+    """,
+
+    model=model,
+
+    tools=[
+        calculator
+    ],
+)
+
+
+async def run_agent(message: str) -> str:
+
+    result = await Runner.run(
+        agent,
+        message
     )
 
-    response = client.chat.completions.create(
-        model="nvidia/nemotron-3-ultra-550b-a55b:free",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful AI agent. Answer clearly and concisely."
-            },
-            {
-                "role": "user",
-                "content": message
-            }
-        ]
-    )
-
-    return response.choices[0].message.content
-
+    return result.final_output
