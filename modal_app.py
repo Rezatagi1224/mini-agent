@@ -1,14 +1,14 @@
 import modal
 
-
-image = modal.Image.debian_slim().pip_install(
-    "fastapi[standard]",
-    "openai"
+image = (
+    modal.Image.debian_slim()
+    .pip_install(
+        "fastapi[standard]",
+        "openai"
+    ).add_local_python_source("agent")
 )
 
-
 app = modal.App("mini-agent")
-
 
 secret = modal.Secret.from_name("openrouter-secret")
 
@@ -24,7 +24,8 @@ def chat(message: dict):
 
     user_message = message.get("message", "")
 
-    return {
-        "answer": run_agent(user_message)
-    }
+    answer = run_agent(user_message)
 
+    return {
+        "answer": answer
+    }
