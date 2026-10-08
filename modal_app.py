@@ -1,3 +1,6 @@
+
+import uuid
+
 import modal
 
 
@@ -19,11 +22,9 @@ image = (
 
 app = modal.App("mini-agent")
 
-
 secret = modal.Secret.from_name(
     "openrouter-secret"
 )
-
 
 memory_volume = modal.Volume.from_name(
     "mini-agent-memory",
@@ -42,27 +43,20 @@ memory_volume = modal.Volume.from_name(
 def web():
 
     from fastapi import FastAPI
-    from fastapi.responses import (
-        FileResponse,
-        HTMLResponse,
-    )
+    from fastapi.responses import FileResponse
 
     web_app = FastAPI()
 
 
     @web_app.get("/")
     async def home():
-
-        html_path = "/root/frontend/index.html"
-
         return FileResponse(
-            html_path
+            "/root/frontend/index.html"
         )
 
 
     @web_app.get("/style.css")
     async def style():
-
         return FileResponse(
             "/root/frontend/style.css"
         )
@@ -70,7 +64,6 @@ def web():
 
     @web_app.get("/app.js")
     async def javascript():
-
         return FileResponse(
             "/root/frontend/app.js"
         )
@@ -83,55 +76,60 @@ def web():
 
         user_message = message.get(
             "message",
-            ""
+            "",
         )
 
         session_id = message.get(
             "session_id",
-            ""
         )
-
 
         if (
             not isinstance(user_message, str)
             or not user_message.strip()
         ):
             return {
-                "answer": "لطفاً یک پیام وارد کن."
+                "answer": "لطفاً یک پیام وارد کن.",
             }
 
+        if len(user_message) > 6000:
+            return {
+                "answer": "پیام بیش از حد طولانی است.",
+            }
 
         if (
             not isinstance(session_id, str)
             or not session_id.strip()
+            or len(session_id) > 100
         ):
+            session_id = str(uuid.uuid4())
+
+        try:
+            memory_volume.reload()
+
+            answer = await run_agent(
+                user_message,
+                session_id,
+            )
+
+            memory_volume.commit()
+
             return {
-                "answer": "Session ID نامعتبر است."
+                "answer": answer,
+                "session_id": session_id,
             }
 
-
-        if len(user_message) > 6000:
+        except Exception as error:
+            print(
+                f"Agent error: {type(error).__name__}: {error}"
+            )
 
             return {
-                "answer": "پیام بیش از حد طولانی است."
+                "answer": (
+                    "در اجرای Agent خطایی رخ داد. "
+                    "لطفاً دوباره تلاش کن."
+                ),
+                "session_id": session_id,
             }
-
-
-        memory_volume.reload()
-
-
-        answer = await run_agent(
-            user_message,
-            session_id,
-        )
-
-
-        memory_volume.commit()
-
-
-        return {
-            "answer": answer
-        }
 
 
     return web_app
