@@ -1,10 +1,13 @@
 import os
-from memory import build_messages
+
 from openai import AsyncOpenAI
 
 from agents import (
     Agent,
     Runner,
+    SQLiteSession,
+    SessionSettings,
+    RunConfig,
     OpenAIChatCompletionsModel,
     set_tracing_disabled,
 )
@@ -47,21 +50,33 @@ agent = Agent(
     model=model,
 
     tools=[
-        calculator
+        calculator,
     ],
 )
 
 
-async def run_agent(message: str, history=None) -> str:
-    messages = build_messages(
-        history or [],
-        message,
+DB_PATH = "/data/conversations.db"
+
+
+async def run_agent(
+    message: str,
+    session_id: str,
+) -> str:
+
+    session = SQLiteSession(
+        session_id,
+        DB_PATH,
     )
 
     result = await Runner.run(
         agent,
-        input=messages,
+        message,
+        session=session,
+        run_config=RunConfig(
+            session_settings=SessionSettings(
+                limit=12
+            )
+        ),
     )
 
     return result.final_output
-
