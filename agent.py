@@ -1,3 +1,4 @@
+
 import os
 
 from openai import AsyncOpenAI
@@ -8,6 +9,7 @@ from agents import (
     SQLiteSession,
     SessionSettings,
     RunConfig,
+    ModelSettings,
     OpenAIChatCompletionsModel,
     set_tracing_disabled,
 )
@@ -15,8 +17,16 @@ from agents import (
 from tools import calculator
 
 
+# -----------------------------------
+# Disable tracing
+# -----------------------------------
+
 set_tracing_disabled(True)
 
+
+# -----------------------------------
+# OpenRouter client
+# -----------------------------------
 
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -24,11 +34,29 @@ client = AsyncOpenAI(
 )
 
 
+# -----------------------------------
+# Primary model + automatic fallbacks
+# -----------------------------------
+
 model = OpenAIChatCompletionsModel(
     model="nvidia/nemotron-3-ultra-550b-a55b:free",
     openai_client=client,
 )
 
+
+model_settings = ModelSettings(
+    extra_args={
+        "models": [
+            "poolside/laguna-s-2.1:free",
+            "openrouter/free",
+        ]
+    }
+)
+
+
+# -----------------------------------
+# Agent
+# -----------------------------------
 
 agent = Agent(
     name="Commercial Agent",
@@ -49,14 +77,24 @@ agent = Agent(
 
     model=model,
 
+    model_settings=model_settings,
+
     tools=[
-        calculator,
+        calculator
     ],
 )
 
 
+# -----------------------------------
+# Persistent conversation database
+# -----------------------------------
+
 DB_PATH = "/data/conversations.db"
 
+
+# -----------------------------------
+# Run Agent
+# -----------------------------------
 
 async def run_agent(
     message: str,
