@@ -17,89 +17,54 @@ from agents import (
 from tools import calculator
 
 
-# -----------------------------------
 # Disable tracing
-# -----------------------------------
-
 set_tracing_disabled(True)
 
 
-# -----------------------------------
 # OpenRouter client
-# -----------------------------------
-
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ["OPENROUTER_API_KEY"],
 )
 
 
-# -----------------------------------
-# Primary model + automatic fallbacks
-# -----------------------------------
-
+# Primary model
 model = OpenAIChatCompletionsModel(
-    model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    model="~inclusionai/ling-3.1-flash:free",
     openai_client=client,
 )
 
 
-
+# Automatic model fallback
 model_settings = ModelSettings(
-    extra_args={
-        "extra_body": {
-            "models": [
-                "nvidia/nemotron-3-ultra-550b-a55b:free",
-                "poolside/laguna-s-2.1:free",
-                "openrouter/free",
-            ],
-            "route": "fallback",
-        }
+    extra_body={
+        "models": [
+            "openrouter/free",
+        ]
     }
 )
 
 
-# -----------------------------------
 # Agent
-# -----------------------------------
-
 agent = Agent(
     name="Commercial Agent",
-
     instructions="""
     You are a professional commercial AI agent.
 
-    Your job is to understand the user's request,
-    decide whether a tool is necessary,
-    use the appropriate tool when needed,
-    and then provide a clear final answer.
-
-    Available tools:
-    - calculator: for mathematical calculations.
-
-    Never pretend that a tool was executed when it was not.
+    Understand the user's request.
+    Use the calculator tool when mathematical
+    calculations are needed.
+    Give clear and useful answers.
+    Never claim a tool was executed if it was not.
     """,
-
     model=model,
-
     model_settings=model_settings,
-
-    tools=[
-        calculator
-    ],
+    tools=[calculator],
 )
 
 
-# -----------------------------------
 # Persistent conversation database
-# -----------------------------------
-
 DB_PATH = "/data/conversations.db"
-
-
-# -----------------------------------
-# Run Agent
-# -----------------------------------
 
 
 async def run_agent(
