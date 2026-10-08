@@ -38,10 +38,20 @@ def web():
 
     @web_app.get("/")
     async def home():
+        from pathlib import Path
+        from fastapi.responses import HTMLResponse
 
-        return FileResponse(
-            "/root/frontend/index.html"
+        html_path = Path("/root/frontend/index.html")
+
+        if not html_path.exists():
+            return HTMLResponse(
+            "<h1>index.html not found</h1>",
+            status_code=500,
         )
+
+        return HTMLResponse(
+        html_path.read_text(encoding="utf-8")
+    )
 
 
     @web_app.get("/style.css")
