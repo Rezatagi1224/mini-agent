@@ -1,13 +1,14 @@
-
 import modal
+
 
 image = (
     modal.Image.debian_slim()
-    .pip_install_from_requirements("requirements.txt")
+    .pip_install_from_requirements(
+        "requirements.txt"
+    )
     .add_local_python_source(
         "agent",
         "tools",
-        "memory",
     )
     .add_local_dir(
         "frontend",
@@ -15,55 +16,81 @@ image = (
     )
 )
 
+
 app = modal.App("mini-agent")
 
-secret = modal.Secret.from_name("openrouter-secret")
+
+secret = modal.Secret.from_name(
+    "openrouter-secret"
+)
+
+
+memory_volume = modal.Volume.from_name(
+    "mini-agent-memory",
+    create_if_missing=True,
+)
 
 
 @app.function(
     image=image,
     secrets=[secret],
+    volumes={
+        "/data": memory_volume,
+    },
 )
 @modal.asgi_app()
 def web():
+
     from fastapi import FastAPI
-    from fastapi.responses import FileResponse, HTMLResponse
-    from pathlib import Path
+    from fastapi.responses import (
+        FileResponse,
+        HTMLResponse,
+    )
 
     web_app = FastAPI()
 
+
     @web_app.get("/")
     async def home():
-        html_path = Path("/root/frontend/index.html")
 
-        if not html_path.exists():
-            return HTMLResponse(
-                "<h1>index.html not found</h1>",
-                status_code=500,
-            )
+        html_path = "/root/frontend/index.html"
 
-        return HTMLResponse(
-            html_path.read_text(encoding="utf-8")
+        return FileResponse(
+            html_path
         )
+
 
     @web_app.get("/style.css")
     async def style():
+
         return FileResponse(
             "/root/frontend/style.css"
         )
 
+
     @web_app.get("/app.js")
     async def javascript():
+
         return FileResponse(
             "/root/frontend/app.js"
         )
 
+
     @web_app.post("/chat")
     async def chat(message: dict):
+
         from agent import run_agent
 
-        user_message = message.get("message", "")
-        history = message.get("history", [])
+        user_message = message.get(
+            "message",
+            ""
+        )
+
+        session_id = message.get(
+            "session_id",
+            ""
+        )
+
 
         if (
             not isinstance(user_message, str)
@@ -73,19 +100,38 @@ def web():
                 "answer": "لطفاً یک پیام وارد کن."
             }
 
+
+        if (
+            not isinstance(session_id, str)
+            or not session_id.strip()
+        ):
+            return {
+                "answer": "Session ID نامعتبر است."
+            }
+
+
         if len(user_message) > 6000:
+
             return {
                 "answer": "پیام بیش از حد طولانی است."
             }
 
-        if not isinstance(history, list):
-            history = []
+
+        memory_volume.reload()
+
 
         answer = await run_agent(
             user_message,
-            history,
+            session_id,
         )
 
-        return {"answer": answer}
+
+        memory_volume.commit()
+
+
+        return {
+            "answer": answer
+        }
+
 
     return web_app
