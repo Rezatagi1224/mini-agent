@@ -44,12 +44,17 @@ model = OpenAIChatCompletionsModel(
 )
 
 
+
 model_settings = ModelSettings(
     extra_args={
-        "models": [
-            "poolside/laguna-s-2.1:free",
-            "openrouter/free",
-        ]
+        "extra_body": {
+            "models": [
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "poolside/laguna-s-2.1:free",
+                "openrouter/free",
+            ],
+            "route": "fallback",
+        }
     }
 )
 
