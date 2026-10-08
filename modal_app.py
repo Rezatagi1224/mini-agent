@@ -1,6 +1,4 @@
 
-import uuid
-
 import modal
 
 
@@ -26,18 +24,10 @@ secret = modal.Secret.from_name(
     "openrouter-secret"
 )
 
-memory_volume = modal.Volume.from_name(
-    "mini-agent-memory",
-    create_if_missing=True,
-)
-
 
 @app.function(
     image=image,
     secrets=[secret],
-    volumes={
-        "/data": memory_volume,
-    },
 )
 @modal.asgi_app()
 def web():
@@ -47,13 +37,11 @@ def web():
 
     web_app = FastAPI()
 
-
     @web_app.get("/")
     async def home():
         return FileResponse(
             "/root/frontend/index.html"
         )
-
 
     @web_app.get("/style.css")
     async def style():
@@ -61,81 +49,56 @@ def web():
             "/root/frontend/style.css"
         )
 
-
     @web_app.get("/app.js")
     async def javascript():
         return FileResponse(
             "/root/frontend/app.js"
         )
 
-
     @web_app.post("/chat")
-    async def chat(message: dict):
+    async def chat(body: dict):
 
         from agent import run_agent
 
-        user_message = message.get(
-            "message",
-            "",
-        )
-
-        session_id = message.get(
-            "session_id",
-        )
+        message = body.get("message", "")
+        history = body.get("history", [])
 
         if (
-            not isinstance(user_message, str)
-            or not user_message.strip()
+            not isinstance(message, str)
+            or not message.strip()
         ):
             return {
-                "answer": "لطفاً یک پیام وارد کن.",
+                "answer": "لطفاً یک پیام وارد کن."
             }
 
-        if len(user_message) > 6000:
+        if len(message) > 6000:
             return {
-                "answer": "پیام بیش از حد طولانی است.",
+                "answer": "پیام بیش از حد طولانی است."
             }
 
-        if (
-            not isinstance(session_id, str)
-            or not session_id.strip()
-            or len(session_id) > 100
-        ):
-            session_id = str(uuid.uuid4())
+        if not isinstance(history, list):
+            history = []
 
         try:
-            memory_volume.reload()
-
             answer = await run_agent(
-                user_message,
-                session_id,
+                message.strip(),
+                history,
             )
-
-            memory_volume.commit()
 
             return {
                 "answer": answer,
-                "session_id": session_id,
             }
 
-        
         except Exception:
             import traceback
 
             traceback.print_exc()
 
             return {
-        "answer": "خطای داخلی Agent؛ لاگ Modal را بررسی کن.",
-        "session_id": session_id,
-    }
-
-            return {
                 "answer": (
-                    "در اجرای Agent خطایی رخ داد. "
-                    "لطفاً دوباره تلاش کن."
-                ),
-                "session_id": session_id,
+                    "اجرای Agent با خطا مواجه شد. "
+                    "لاگ Modal را بررسی کن."
+                )
             }
-
 
     return web_app
