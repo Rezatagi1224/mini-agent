@@ -30,7 +30,7 @@ client = AsyncOpenAI(
 
 # Primary model
 model = OpenAIChatCompletionsModel(
-    model="~inclusionai/ling-3.1-flash:free",
+    model="inclusionai/ling-3.1-flash:free",
     openai_client=client,
 )
 
