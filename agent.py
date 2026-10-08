@@ -101,6 +101,7 @@ DB_PATH = "/data/conversations.db"
 # Run Agent
 # -----------------------------------
 
+
 async def run_agent(
     message: str,
     session_id: str,
@@ -111,15 +112,19 @@ async def run_agent(
         DB_PATH,
     )
 
-    result = await Runner.run(
-        agent,
-        message,
-        session=session,
-        run_config=RunConfig(
-            session_settings=SessionSettings(
-                limit=12
-            )
-        ),
-    )
+    try:
+        result = await Runner.run(
+            agent,
+            message,
+            session=session,
+            run_config=RunConfig(
+                session_settings=SessionSettings(
+                    limit=12
+                )
+            ),
+        )
 
-    return result.final_output
+        return result.final_output
+
+    finally:
+        session.close()
