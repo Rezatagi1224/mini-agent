@@ -1,5 +1,5 @@
 import os
-
+from memory import build_messages
 from openai import AsyncOpenAI
 
 from agents import (
@@ -52,11 +52,16 @@ agent = Agent(
 )
 
 
-async def run_agent(message: str) -> str:
+async def run_agent(message: str, history=None) -> str:
+    messages = build_messages(
+        history or [],
+        message,
+    )
 
     result = await Runner.run(
         agent,
-        message
+        input=messages,
     )
 
     return result.final_output
+
