@@ -5,18 +5,6 @@ const chat = document.getElementById("chat");
 const button = document.getElementById("send-button");
 
 const HISTORY_KEY = "mini_agent_history";
-const SESSION_KEY = "mini_agent_session";
-
-let sessionId = localStorage.getItem(SESSION_KEY);
-
-if (!sessionId) {
-    sessionId =
-        typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random()}`;
-
-    localStorage.setItem(SESSION_KEY, sessionId);
-}
 
 let history = [];
 
@@ -30,7 +18,7 @@ try {
                 item &&
                 ["user", "assistant"].includes(item.role) &&
                 typeof item.content === "string"
-        );
+        ).slice(-12);
     }
 } catch {
     history = [];
@@ -62,7 +50,7 @@ function saveHistory() {
 }
 
 
-// Restore the visible conversation.
+// Restore previous conversation
 for (const item of history) {
     addMessage(
         item.content,
@@ -106,20 +94,11 @@ form.addEventListener("submit", async event => {
             },
             body: JSON.stringify({
                 message: message,
-                session_id: sessionId
+                history: history.slice(-12)
             })
         });
 
         const data = await response.json();
-
-        if (data.session_id) {
-            sessionId = data.session_id;
-
-            localStorage.setItem(
-                SESSION_KEY,
-                sessionId
-            );
-        }
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
