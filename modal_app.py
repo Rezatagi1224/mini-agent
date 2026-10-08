@@ -80,6 +80,8 @@ def web():
             history = []
 
         try:
+            print("HISTORY RECEIVED:")
+            print(history)
             answer = await run_agent(
                 message.strip(),
                 history,
