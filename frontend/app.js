@@ -13,21 +13,20 @@ try {
     const parsed = saved ? JSON.parse(saved) : [];
 
     if (Array.isArray(parsed)) {
-        history = parsed.filter(
-            item =>
-                item &&
-                ["user", "assistant"].includes(item.role) &&
-                typeof item.content === "string"
+        history = parsed.filter(item =>
+            item &&
+            ["user", "assistant"].includes(item.role) &&
+            typeof item.content === "string"
         ).slice(-12);
     }
-} catch {
+} catch (error) {
+    console.error("History loading failed:", error);
     history = [];
 }
 
 
 function addMessage(text, type) {
     const element = document.createElement("div");
-
     element.className = `message ${type}`;
     element.textContent = text;
 
@@ -39,18 +38,14 @@ function addMessage(text, type) {
 
 
 function saveHistory() {
-    try {
-        localStorage.setItem(
-            HISTORY_KEY,
-            JSON.stringify(history.slice(-12))
-        );
-    } catch (error) {
-        console.error("History save failed:", error);
-    }
+    localStorage.setItem(
+        HISTORY_KEY,
+        JSON.stringify(history.slice(-12))
+    );
 }
 
 
-// Restore previous conversation
+// Show previous messages
 for (const item of history) {
     addMessage(
         item.content,
@@ -76,6 +71,9 @@ form.addEventListener("submit", async event => {
         return;
     }
 
+    // Snapshot history BEFORE adding the current message.
+    const previousHistory = history.slice(-12);
+
     addMessage(message, "user");
 
     input.value = "";
@@ -87,6 +85,11 @@ form.addEventListener("submit", async event => {
     );
 
     try {
+        console.log(
+            "Sending previous history:",
+            previousHistory
+        );
+
         const response = await fetch("/chat", {
             method: "POST",
             headers: {
@@ -94,7 +97,7 @@ form.addEventListener("submit", async event => {
             },
             body: JSON.stringify({
                 message: message,
-                history: history.slice(-12)
+                history: previousHistory
             })
         });
 
