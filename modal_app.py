@@ -62,21 +62,24 @@ def web():
 
     @web_app.post("/chat")
     async def chat(message: dict):
-
         from agent import run_agent
 
-        user_message = message.get(
-            "message",
-            ""
-        )
+        user_message = message.get("message", "")
+        history = message.get("history", [])
+
+        if not isinstance(user_message, str) or not user_message.strip():
+            return {"answer": "لطفاً یک پیام وارد کن."}
+
+        if len(user_message) > 6000:
+            return {"answer": "پیام بیش از حد طولانی است."}
+
+        if not isinstance(history, list):
+            history = []
 
         answer = await run_agent(
-            user_message
-        )
+        user_message,
+        history,
+    )
 
-        return {
-            "answer": answer
-        }
+        return {"answer": answer}
 
-
-    return web_app
