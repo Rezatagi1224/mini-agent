@@ -118,10 +118,16 @@ def web():
                 "session_id": session_id,
             }
 
-        except Exception as error:
-            print(
-                f"Agent error: {type(error).__name__}: {error}"
-            )
+        
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+
+            return {
+        "answer": "خطای داخلی Agent؛ لاگ Modal را بررسی کن.",
+        "session_id": session_id,
+    }
 
             return {
                 "answer": (
