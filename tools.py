@@ -1,8 +1,8 @@
-import json
 import unicodedata
 
 from agents import function_tool
 from product_store import load_products
+from order_store import create_order
 
 
 def _normalize(value: str) -> str:
@@ -28,7 +28,7 @@ def _format_price(product: dict) -> str:
     price = product.get("price")
     if not isinstance(price, (int, float)) or price < 0:
         return "قیمت ثبت نشده"
-    currency = product.get("currency", "IRR")
+    currency = product.get("currency", "تومان")
     return f"{price:,.0f} {currency}"
 
 
@@ -47,7 +47,6 @@ def calculator(a: float, b: float, operation: str) -> str:
         "multiply": lambda: a * b,
         "divide": lambda: a / b if b != 0 else None,
     }
-
     operation = _normalize(operation)
     if operation not in operations:
         return "عملیات نامعتبر است. از add، subtract، multiply یا divide استفاده کن."
@@ -68,17 +67,17 @@ def search_products(
 
     Args:
         query: Words to search in product name, description, or tags.
-        category: Product category, such as T-shirt or jeans.
+        category: Product category.
         size: Requested size.
         color: Requested color.
         max_results: Maximum number of results, from 1 to 10.
     """
-    if not load_products():
-        return "کاتالوگ محصول هنوز خالی است؛ ابتدا محصولات واقعی فروشگاه را در products.py ثبت کن."
-
+    products = load_products()
+    if not products:
+        return "کاتالوگ محصول هنوز خالی است؛ ابتدا محصولات واقعی فروشگاه را در پنل ثبت کن."
     max_results = max(1, min(int(max_results), 10))
     matches = []
-    for product in load_products():
+    for product in products:
         if not isinstance(product, dict):
             continue
         if not _contains(_product_text(product), query):
@@ -90,10 +89,8 @@ def search_products(
         if color and not any(_normalize(color) in _normalize(c) for c in product.get("colors", [])):
             continue
         matches.append(product)
-
     if not matches:
         return "محصولی مطابق فیلترهای واردشده در کاتالوگ پیدا نشد."
-
     lines = []
     for p in matches[:max_results]:
         lines.append(
@@ -106,11 +103,7 @@ def search_products(
 
 
 @function_tool
-def check_stock(
-    product_name: str,
-    size: str = "",
-    color: str = "",
-) -> str:
+def check_stock(product_name: str, size: str = "", color: str = "") -> str:
     """Check recorded stock for a product and optional size and color.
 
     Args:
@@ -126,18 +119,16 @@ def check_stock(
             or _contains(p.get("name", ""), product_name)
         )
     ]
-
     if not matches:
         return "این محصول در کاتالوگ ثبت نشده؛ موجودی آن قابل تأیید نیست."
     if len(matches) > 1:
-        names = ", ".join(str(p.get("name", "نامشخص")) for p in matches[:5])
+        names = "، ".join(str(p.get("name", "نامشخص")) for p in matches[:5])
         return f"چند محصول پیدا شد ({names}). لطفاً نام دقیق‌تر یا شناسه محصول را بده."
-
     product = matches[0]
     stock_map = product.get("stock_by_variant")
     if not isinstance(stock_map, dict):
         stock_map = {}
-
+    keys = []
     if size and color:
         keys = [f"{color}|{size}", f"{size}|{color}"]
     elif size:
@@ -149,12 +140,10 @@ def check_stock(
         if isinstance(total, (int, float)) and total >= 0:
             return f"موجودی ثبت‌شده {product.get('name')}: {total:g} عدد."
         return "موجودی کل این محصول ثبت نشده است؛ عددی برای موجودی نمی‌توان تأیید کرد."
-
     for key in keys:
         if key in stock_map and isinstance(stock_map[key], (int, float)) and stock_map[key] >= 0:
             variant = "، ".join(x for x in [color, size] if x)
             return f"موجودی ثبت‌شده {product.get('name')} ({variant or key}): {stock_map[key]:g} عدد."
-
     variant = "، ".join(x for x in [color, size] if x)
     return f"موجودی {product.get('name')} برای {variant or 'این محصول'} در داده‌ها ثبت نشده است؛ موجود یا ناموجود بودن قابل تأیید نیست."
 
@@ -176,11 +165,11 @@ def recommend_products(
         style: Desired style, such as boxy, casual, or classic.
         color: Preferred color.
     """
-    if not PRODUCTS:
-        return "برای پیشنهاد واقعی، ابتدا محصولات و مشخصات تأییدشده را در products.py ثبت کن."
-
+    products = load_products()
+    if not products:
+        return "برای پیشنهاد واقعی، ابتدا محصولات و مشخصات تأییدشده را در پنل ثبت کن."
     matches = []
-    for product in PRODUCTS:
+    for product in products:
         if not isinstance(product, dict):
             continue
         searchable = _product_text(product) + " " + str(product.get("occasion", ""))
@@ -193,21 +182,76 @@ def recommend_products(
         if color and not any(_normalize(color) in _normalize(c) for c in product.get("colors", [])):
             continue
         price = product.get("price")
-        if budget > 0 and (
-            not isinstance(price, (int, float)) or price < 0 or price > budget
-        ):
+        if budget > 0 and (not isinstance(price, (int, float)) or price < 0 or price > budget):
             continue
         matches.append(product)
-
     if not matches:
         return "محصول ثبت‌شده‌ای با تمام شرایط درخواستی پیدا نشد. می‌توانی یکی از فیلترها را تغییر بدهی."
-
     matches.sort(key=lambda p: (not bool(p.get("stock_by_variant") or p.get("stock") is not None), str(p.get("name", ""))))
-    lines = []
-    for p in matches[:5]:
-        lines.append(
-            f"- {p.get('name', 'نامشخص')} | قیمت: {_format_price(p)} | "
-            f"سایزها: {', '.join(map(str, p.get('sizes', []))) or 'ثبت نشده'} | "
-            f"رنگ‌ها: {', '.join(map(str, p.get('colors', []))) or 'ثبت نشده'}"
+    return "\n".join(
+        f"- {p.get('name', 'نامشخص')} | قیمت: {_format_price(p)} | "
+        f"سایزها: {', '.join(map(str, p.get('sizes', []))) or 'ثبت نشده'} | "
+        f"رنگ‌ها: {', '.join(map(str, p.get('colors', []))) or 'ثبت نشده'}"
+        for p in matches[:5]
+    )
+
+
+@function_tool
+def submit_customer_order(
+    customer_name: str,
+    phone: str,
+    address: str,
+    product_name: str,
+    size: str,
+    color: str,
+    quantity: int = 1,
+    customer_confirmed: bool = False,
+) -> str:
+    """Create a pending order only after the customer explicitly confirms they want to place it and provides all required details.
+
+    Args:
+        customer_name: Customer's full name.
+        phone: Customer's contact phone number.
+        address: Complete shipping address.
+        product_name: Exact product name or product ID from the store catalog.
+        size: Requested size.
+        color: Requested color.
+        quantity: Number of items requested.
+        customer_confirmed: True only when the customer explicitly confirms order submission after seeing the item, variant, quantity, price, and total.
+    """
+    if customer_confirmed is not True:
+        return "برای ثبت سفارش، ابتدا نام کالا، سایز، رنگ، تعداد، قیمت و مبلغ کل را به مشتری اعلام کن و صریحاً تأیید بگیر."
+    matches = [
+        p for p in load_products()
+        if isinstance(p, dict) and (
+            _normalize(product_name) == _normalize(p.get("id", ""))
+            or _normalize(product_name) == _normalize(p.get("name", ""))
         )
-    return "\n".join(lines)
+    ]
+    if len(matches) != 1:
+        return "محصول با نام دقیق در کاتالوگ پیدا نشد یا نام مبهم است؛ سفارش ثبت نشد."
+    product = matches[0]
+    if product.get("sizes") and not any(_normalize(size) == _normalize(s) for s in product["sizes"]):
+        return "این سایز در مشخصات ثبت‌شده محصول نیست؛ سفارش ثبت نشد."
+    if product.get("colors") and not any(_normalize(color) == _normalize(c) for c in product["colors"]):
+        return "این رنگ در مشخصات ثبت‌شده محصول نیست؛ سفارش ثبت نشد."
+    try:
+        order = create_order(
+            customer_name=customer_name,
+            phone=phone,
+            address=address,
+            product=product,
+            size=size,
+            color=color,
+            quantity=quantity,
+        )
+    except ValueError as error:
+        return f"سفارش ثبت نشد: {error}"
+    stock_note = "موجودی ثبت‌شده بررسی شد." if order["stock_check"] == "confirmed" else "موجودی سایز و رنگ هنوز باید توسط فروشگاه تأیید شود."
+    return (
+        f"سفارش با موفقیت ثبت شد و در انتظار تأیید فروشگاه است. "
+        f"شماره سفارش: {order['id']} | محصول: {order['product_name']} | "
+        f"سایز: {order['size']} | رنگ: {order['color']} | تعداد: {order['quantity']} | "
+        f"مبلغ کل: {order['total_price']:,} تومان. {stock_note} "
+        "این سفارش هنوز تأیید نهایی نشده و پرداختی انجام نشده است."
+    )
