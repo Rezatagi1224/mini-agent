@@ -7,199 +7,48 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source(
-        "agent",
-        "tools",
-        "products",
-        "product_store",
-        "order_store",
-        "message_service",
-        "instagram_channel",
-    )
+    .add_local_python_source("agent","tools","products","product_store","order_store","message_service","instagram_channel")
     .add_local_dir("frontend", "/root/frontend")
 )
-
 
 app = modal.App("mini-agent")
 secret = modal.Secret.from_name("openrouter-secret")
 product_volume = modal.Volume.from_name("mini-agent-data", create_if_missing=True)
 
-
-@app.function(
-    image=image,
-    secrets=[secret],
-    volumes={"/data": product_volume},
-)
+@app.function(image=image,secrets=[secret],volumes={"/data":product_volume})
 @modal.asgi_app()
 def web():
     from fastapi import FastAPI, HTTPException, Request
-    from fastapi.responses import FileResponse, PlainTextResponse
-
-    web_app = FastAPI()
+    from fastapi.responses import FileResponse
+    web_app=FastAPI()
 
     @web_app.get("/")
-    async def home():
-        return FileResponse("/root/frontend/index.html")
-
+    async def home(): return FileResponse("/root/frontend/index.html")
     @web_app.get("/admin")
-    async def admin_page():
-        return FileResponse("/root/frontend/admin.html")
+    async def admin(): return FileResponse("/root/frontend/admin.html")
+    @web_app.get("/admin/dashboard-page")
+    async def dashboard_page(): return FileResponse("/root/frontend/dashboard.html")
 
-    @web_app.get("/admin/orders-page")
-    async def admin_orders_page():
-        return FileResponse("/root/frontend/orders.html")
-
-    def require_admin(request: Request):
+    def require_admin(request):
         import hmac
-        expected = os.environ.get("ADMIN_PASSWORD", "")
-        supplied = request.headers.get("x-admin-password", "")
-        if not expected:
-            raise HTTPException(
-                status_code=503,
-                detail="رمز مدیریت تنظیم نشده است. ADMIN_PASSWORD را در Secret با نام openrouter-secret ثبت کن.",
-            )
-        if not supplied or not hmac.compare_digest(supplied, expected):
-            raise HTTPException(status_code=401, detail="رمز مدیریت نادرست است.")
+        expected=os.environ.get("ADMIN_PASSWORD","")
+        if not expected or not hmac.compare_digest(request.headers.get("x-admin-password",""),expected):
+            raise HTTPException(status_code=401,detail="رمز مدیریت نادرست است.")
 
-    @web_app.get("/admin/products")
-    async def admin_list_products(request: Request):
-        require_admin(request)
-        product_volume.reload()
-        from product_store import load_products
-        return {"products": load_products()}
-
-    @web_app.post("/admin/products")
-    async def admin_create_product(request: Request, body: dict):
-        require_admin(request)
-        product_volume.reload()
-        from product_store import load_products, save_products, normalize_product
-        products = load_products()
-        try:
-            product = normalize_product(body)
-        except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error))
-        if any(p.get("id") == product["id"] for p in products):
-            raise HTTPException(status_code=409, detail="شناسه محصول تکراری است.")
-        products.append(product)
-        save_products(products)
-        product_volume.commit()
-        return {"ok": True, "product": product}
-
-    @web_app.put("/admin/products/{product_id}")
-    async def admin_update_product(product_id: str, request: Request, body: dict):
-        require_admin(request)
-        product_volume.reload()
-        from product_store import load_products, save_products, normalize_product
-        products = load_products()
-        for index, current in enumerate(products):
-            if current.get("id") == product_id:
-                try:
-                    products[index] = normalize_product(body, existing=current)
-                except ValueError as error:
-                    raise HTTPException(status_code=422, detail=str(error))
-                save_products(products)
-                product_volume.commit()
-                return {"ok": True, "product": products[index]}
-        raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
-
-    @web_app.delete("/admin/products/{product_id}")
-    async def admin_delete_product(product_id: str, request: Request):
-        require_admin(request)
-        product_volume.reload()
-        from product_store import load_products, save_products
-        products = load_products()
-        remaining = [p for p in products if p.get("id") != product_id]
-        if len(remaining) == len(products):
-            raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
-        save_products(remaining)
-        product_volume.commit()
-        return {"ok": True}
-
-    @web_app.get("/admin/orders")
-    async def admin_list_orders(request: Request):
+    @web_app.get("/admin/dashboard")
+    async def dashboard(request:Request):
         require_admin(request)
         product_volume.reload()
         from order_store import load_orders
-        return {"orders": load_orders()}
-
-    @web_app.patch("/admin/orders/{order_id}")
-    async def admin_update_order(order_id: str, request: Request, body: dict):
-        require_admin(request)
-        product_volume.reload()
-        from order_store import update_order_status, STATUSES
-        status = body.get("status")
-        if status not in STATUSES:
-            raise HTTPException(status_code=422, detail="وضعیت سفارش نامعتبر است.")
-        try:
-            order = update_order_status(order_id, status)
-        except ValueError as error:
-            raise HTTPException(status_code=409, detail=str(error))
-        if order is None:
-            raise HTTPException(status_code=404, detail="سفارش پیدا نشد.")
-        product_volume.commit()
-        return {"ok": True, "order": order}
+        orders=load_orders()
+        confirmed=[o for o in orders if o.get("status") in ("confirmed","shipped")]
+        cancelled=[o for o in orders if o.get("status")=="cancelled"]
+        top={}
+        for o in confirmed:
+            name=o.get("product_name","")
+            top[name]=top.get(name,0)+int(o.get("quantity",0))
+        return {"orders":{"total":len(orders),"pending":sum(o.get("status")=="pending" for o in orders),"confirmed":len(confirmed)},"sales":{"confirmed_amount":sum(o.get("total_price",0) for o in confirmed),"cancelled_amount":sum(o.get("total_price",0) for o in cancelled)},"top_products":[{"name":k,"quantity":v} for k,v in sorted(top.items(),key=lambda x:x[1],reverse=True)[:5]]}
 
     @web_app.get("/style.css")
-    async def style():
-        return FileResponse("/root/frontend/style.css")
-
-    @web_app.get("/app.js")
-    async def javascript():
-        return FileResponse("/root/frontend/app.js")
-
-    @web_app.post("/chat")
-    async def chat(body: dict):
-        from message_service import handle_customer_message
-        message = body.get("message", "")
-        history = body.get("history", [])
-        if not isinstance(message, str) or not message.strip():
-            return {"answer": "لطفاً یک پیام وارد کن."}
-        if len(message) > 6000:
-            return {"answer": "پیام بیش از حد طولانی است."}
-        if not isinstance(history, list):
-            history = []
-        try:
-            product_volume.reload()
-            answer = await handle_customer_message(message.strip(), history)
-            product_volume.commit()
-            return {"answer": answer}
-        except Exception:
-            import traceback
-            traceback.print_exc()
-            return {"answer": "اجرای Agent با خطا مواجه شد. لاگ Modal را بررسی کن."}
-
-    @web_app.get("/webhooks/instagram")
-    async def verify_instagram_webhook(request: Request):
-        from instagram_channel import verify_webhook_challenge
-        mode = request.query_params.get("hub.mode", "")
-        token = request.query_params.get("hub.verify_token", "")
-        challenge = request.query_params.get("hub.challenge", "")
-        verified = verify_webhook_challenge(mode, token, challenge)
-        if verified is None:
-            raise HTTPException(status_code=403, detail="Webhook verification failed")
-        return PlainTextResponse(verified)
-
-    @web_app.post("/webhooks/instagram")
-    async def instagram_webhook(request: Request):
-        from instagram_channel import (
-            extract_text_messages,
-            send_instagram_text,
-            verify_webhook_signature,
-        )
-        from message_service import handle_customer_message
-        raw_body = await request.body()
-        signature = request.headers.get("x-hub-signature-256")
-        if not verify_webhook_signature(raw_body, signature):
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
-        try:
-            payload = json.loads(raw_body)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
-        if not isinstance(payload, dict) or payload.get("object") != "instagram":
-            return {"status": "ignored"}
-        for incoming in extract_text_messages(payload):
-            answer = await handle_customer_message(incoming["text"], history=[])
-            await send_instagram_text(incoming["sender_id"], answer)
-        return {"status": "received"}
-
+    async def style(): return FileResponse("/root/frontend/style.css")
     return web_app
