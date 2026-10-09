@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>مدیریت محصولات | Mini Agent</title>
+  <style>
+    :root{font-family:Tahoma,Arial,sans-serif;color:#18212f;background:#f3f5f8}
+    *{box-sizing:border-box}body{margin:0}.wrap{max-width:1100px;margin:auto;padding:20px}
+    header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+    h1{font-size:24px;margin:0 0 6px}p{color:#637083;margin:0}
+    .panel{background:#fff;border:1px solid #e1e6ee;border-radius:16px;padding:18px;margin-bottom:18px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    label{display:block;font-size:13px;color:#475569;margin-bottom:6px}
+    input,textarea{width:100%;border:1px solid #cfd7e3;border-radius:9px;padding:11px;font:inherit;font-size:14px;background:#fff}
+    textarea{min-height:76px;resize:vertical}.wide{grid-column:1/-1}
+    button{border:0;border-radius:9px;padding:10px 14px;font:inherit;cursor:pointer;background:#172033;color:#fff}
+    button.secondary{background:#e9edf3;color:#18212f}button.danger{background:#b42318}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.status{margin-top:12px;font-size:14px;white-space:pre-wrap}
+    .table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:right;padding:12px;border-bottom:1px solid #e8edf3;font-size:14px}
+    th{color:#64748b;font-weight:600}td .actions{margin:0}.empty{padding:24px;text-align:center;color:#64748b}
+    .top-actions{display:flex;gap:8px;flex-wrap:wrap}
+    @media(max-width:620px){.wrap{padding:12px}.grid{grid-template-columns:1fr}.wide{grid-column:auto}h1{font-size:20px}.panel{padding:13px}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>مدیریت محصولات</h1><p>محصولات ثبت‌شده در کاتالوگ عامل فروش</p></div>
+    <div class="top-actions"><button class="secondary" id="refresh">به‌روزرسانی</button><button class="secondary" onclick="location.href='/'">رفتن به چت</button></div>
+  </header>
+
+  <section class="panel" id="login-panel">
+    <h2>ورود مدیر</h2>
+    <p style="margin:8px 0 14px">رمز مدیریتی که در تنظیمات Secret در Modal ثبت شده را وارد کن.</p>
+    <div class="grid"><div class="wide"><label for="password">رمز مدیریت</label><input id="password" type="password" autocomplete="current-password"></div></div>
+    <div class="actions"><button id="login">ورود و بارگذاری محصولات</button></div>
+    <div class="status" id="login-status" role="status"></div>
+  </section>
+
+  <section class="panel" id="editor-panel" hidden>
+    <h2 id="form-title">افزودن محصول</h2>
+    <form id="product-form">
+      <div class="grid">
+        <div><label for="name">نام محصول *</label><input id="name" required maxlength="160"></div>
+        <div><label for="category">دسته‌بندی</label><input id="category" placeholder="مثلاً دورس، تی‌شرت، شلوار"></div>
+        <div><label for="price">قیمت به تومان *</label><input id="price" required type="number" min="0" step="1"></div>
+        <div><label for="stock">موجودی کل (اگر تأیید شده)</label><input id="stock" type="number" min="0" step="1" placeholder="خالی = ثبت نشده"></div>
+        <div><label for="sizes">سایزها</label><input id="sizes" placeholder="L, XL, 2XL, 3XL"></div>
+        <div><label for="colors">رنگ‌ها</label><input id="colors" placeholder="مشکی، سفید، آبی"></div>
+        <div class="wide"><label for="description">توضیحات</label><textarea id="description"></textarea></div>
+        <div class="wide"><label for="tags">کلیدواژه‌ها (با ویرگول جدا کن)</label><input id="tags" placeholder="راحت، روزمره، دو نخ"></div>
+      </div>
+      <div class="actions"><button type="submit" id="save">ذخیره محصول</button><button type="button" class="secondary" id="cancel">لغو و پاک‌کردن فرم</button><button type="button" class="secondary" id="logout">خروج مدیر</button></div>
+      <div class="status" id="form-status" role="status"></div>
+    </form>
+  </section>
+
+  <section class="panel" id="catalog-panel" hidden>
+    <h2>کاتالوگ محصولات</h2>
+    <div class="table-wrap"><table><thead><tr><th>محصول</th><th>قیمت</th><th>سایزها</th><th>رنگ‌ها</th><th>موجودی</th><th>عملیات</th></tr></thead><tbody id="products"></tbody></table></div>
+    <div class="status" id="catalog-status" role="status"></div>
+  </section>
+</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let password = sessionStorage.getItem("mini_agent_admin_password") || "";
+  let products = [];
+  let editingId = null;
+  const money = value => Number(value).toLocaleString("fa-IR") + " تومان";
+  const split = value => value.split(/[,،]/).map(x => x.trim()).filter(Boolean);
+  const setStatus = (id, message) => $(id).textContent = message;
+
+  async function api(path, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      headers: { "Content-Type": "application/json", "X-Admin-Password": password, ...(options.headers || {}) }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "درخواست ناموفق بود.");
+    return data;
+  }
+
+  async function loadCatalog() {
+    setStatus("login-status", "در حال دریافت کاتالوگ...");
+    try {
+      const data = await api("/admin/products");
+      products = data.products || [];
+      $("login-panel").hidden = true;
+      $("editor-panel").hidden = false;
+      $("catalog-panel").hidden = false;
+      render();
+      setStatus("login-status", "");
+    } catch (error) {
+      setStatus("login-status", error.message);
+    }
+  }
+
+  function render() {
+    const tbody = $("products");
+    tbody.replaceChildren();
+    if (!products.length) {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 6; cell.className = "empty"; cell.textContent = "هنوز محصولی ثبت نشده است.";
+      row.appendChild(cell); tbody.appendChild(row); return;
+    }
+    for (const product of products) {
+      const row = document.createElement("tr");
+      const values = [
+        product.name + (product.category ? "\n" + product.category : ""),
+        money(product.price),
+        (product.sizes || []).join("، ") || "ثبت نشده",
+        (product.colors || []).join("، ") || "ثبت نشده",
+        Number.isInteger(product.stock) ? product.stock.toLocaleString("fa-IR") + " عدد" : "ثبت نشده"
+      ];
+      for (const value of values) {
+        const cell = document.createElement("td"); cell.textContent = value; row.appendChild(cell);
+      }
+      const actions = document.createElement("td");
+      const edit = document.createElement("button"); edit.textContent = "ویرایش"; edit.className = "secondary";
+      edit.addEventListener("click", () => editProduct(product.id));
+      const del = document.createElement("button"); del.textContent = "حذف"; del.className = "danger";
+      del.addEventListener("click", () => deleteProduct(product.id));
+      const buttons = document.createElement("div"); buttons.className = "actions"; buttons.append(edit, del);
+      actions.appendChild(buttons); row.appendChild(actions); tbody.appendChild(row);
+    }
+  }
+
+  function editProduct(id) {
+    const product = products.find(item => item.id === id);
+    if (!product) return;
+    editingId = id;
+    $("form-title").textContent = "ویرایش محصول";
+    $("name").value = product.name || "";
+    $("category").value = product.category || "";
+    $("price").value = product.price ?? "";
+    $("stock").value = product.stock ?? "";
+    $("sizes").value = (product.sizes || []).join(", ");
+    $("colors").value = (product.colors || []).join(", ");
+    $("description").value = product.description || "";
+    $("tags").value = (product.tags || []).join(", ");
+    setStatus("form-status", "حالت ویرایش: " + product.name);
+    $("editor-panel").scrollIntoView({behavior:"smooth"});
+  }
+
+  function resetForm() {
+    editingId = null; $("product-form").reset();
+    $("form-title").textContent = "افزودن محصول";
+    setStatus("form-status", "");
+  }
+
+  $("login").addEventListener("click", async () => {
+    password = $("password").value;
+    await loadCatalog();
+    if (!$("editor-panel").hidden) sessionStorage.setItem("mini_agent_admin_password", password);
+  });
+  $("password").addEventListener("keydown", event => { if (event.key === "Enter") $("login").click(); });
+  $("refresh").addEventListener("click", async () => {
+    if (!password) { $("login-panel").hidden = false; return; }
+    try { const data = await api("/admin/products"); products = data.products || []; render(); setStatus("catalog-status", "کاتالوگ به‌روز شد."); }
+    catch (error) { setStatus("catalog-status", error.message); }
+  });
+  $("product-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const product = {
+      name: $("name").value.trim(), category: $("category").value.trim(),
+      price: $("price").value, stock: $("stock").value,
+      sizes: split($("sizes").value), colors: split($("colors").value),
+      description: $("description").value.trim(), tags: split($("tags").value)
+    };
+    $("save").disabled = true;
+    try {
+      if (editingId) await api("/admin/products/" + encodeURIComponent(editingId), {method:"PUT", body:JSON.stringify(product)});
+      else await api("/admin/products", {method:"POST", body:JSON.stringify(product)});
+      const data = await api("/admin/products"); products = data.products || []; render(); resetForm();
+      setStatus("form-status", "محصول با موفقیت ذخیره شد.");
+      setStatus("catalog-status", "تغییرات ذخیره شدند.");
+    } catch (error) { setStatus("form-status", error.message); }
+    finally { $("save").disabled = false; }
+  });
+  async function deleteProduct(id) {
+    const product = products.find(item => item.id === id);
+    if (!product || !confirm("محصول «" + product.name + "» حذف شود؟")) return;
+    try {
+      await api("/admin/products/" + encodeURIComponent(id), {method:"DELETE"});
+      products = products.filter(item => item.id !== id); render();
+      setStatus("catalog-status", "محصول حذف شد.");
+      if (editingId === id) resetForm();
+    } catch (error) { setStatus("catalog-status", error.message); }
+  }
+  $("cancel").addEventListener("click", resetForm);
+  $("logout").addEventListener("click", () => {
+    password = ""; sessionStorage.removeItem("mini_agent_admin_password");
+    $("password").value = ""; $("editor-panel").hidden = true; $("catalog-panel").hidden = true; $("login-panel").hidden = false; resetForm();
+  });
+  if (password) { $("password").value = password; loadCatalog(); }
+})();
+</script>
+</body>
+</html>
