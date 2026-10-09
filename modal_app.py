@@ -12,6 +12,7 @@ image = (
         "tools",
         "products",
         "product_store",
+        "order_store",
         "message_service",
         "instagram_channel",
     )
@@ -44,6 +45,10 @@ def web():
     async def admin_page():
         return FileResponse("/root/frontend/admin.html")
 
+    @web_app.get("/admin/orders-page")
+    async def admin_orders_page():
+        return FileResponse("/root/frontend/orders.html")
+
     def require_admin(request: Request):
         import hmac
         expected = os.environ.get("ADMIN_PASSWORD", "")
@@ -67,10 +72,12 @@ def web():
     async def admin_create_product(request: Request, body: dict):
         require_admin(request)
         product_volume.reload()
-        product_volume.reload()
         from product_store import load_products, save_products, normalize_product
         products = load_products()
-        product = normalize_product(body)
+        try:
+            product = normalize_product(body)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error))
         if any(p.get("id") == product["id"] for p in products):
             raise HTTPException(status_code=409, detail="شناسه محصول تکراری است.")
         products.append(product)
@@ -81,11 +88,15 @@ def web():
     @web_app.put("/admin/products/{product_id}")
     async def admin_update_product(product_id: str, request: Request, body: dict):
         require_admin(request)
+        product_volume.reload()
         from product_store import load_products, save_products, normalize_product
         products = load_products()
         for index, current in enumerate(products):
             if current.get("id") == product_id:
-                products[index] = normalize_product(body, existing=current)
+                try:
+                    products[index] = normalize_product(body, existing=current)
+                except ValueError as error:
+                    raise HTTPException(status_code=422, detail=str(error))
                 save_products(products)
                 product_volume.commit()
                 return {"ok": True, "product": products[index]}
@@ -104,6 +115,27 @@ def web():
         product_volume.commit()
         return {"ok": True}
 
+    @web_app.get("/admin/orders")
+    async def admin_list_orders(request: Request):
+        require_admin(request)
+        product_volume.reload()
+        from order_store import load_orders
+        return {"orders": load_orders()}
+
+    @web_app.patch("/admin/orders/{order_id}")
+    async def admin_update_order(order_id: str, request: Request, body: dict):
+        require_admin(request)
+        product_volume.reload()
+        from order_store import update_order_status, STATUSES
+        status = body.get("status")
+        if status not in STATUSES:
+            raise HTTPException(status_code=422, detail="وضعیت سفارش نامعتبر است.")
+        order = update_order_status(order_id, status)
+        if order is None:
+            raise HTTPException(status_code=404, detail="سفارش پیدا نشد.")
+        product_volume.commit()
+        return {"ok": True, "order": order}
+
     @web_app.get("/style.css")
     async def style():
         return FileResponse("/root/frontend/style.css")
@@ -115,20 +147,18 @@ def web():
     @web_app.post("/chat")
     async def chat(body: dict):
         from message_service import handle_customer_message
-
         message = body.get("message", "")
         history = body.get("history", [])
-
         if not isinstance(message, str) or not message.strip():
             return {"answer": "لطفاً یک پیام وارد کن."}
         if len(message) > 6000:
             return {"answer": "پیام بیش از حد طولانی است."}
         if not isinstance(history, list):
             history = []
-
         try:
             product_volume.reload()
             answer = await handle_customer_message(message.strip(), history)
+            product_volume.commit()
             return {"answer": answer}
         except Exception:
             import traceback
@@ -138,7 +168,6 @@ def web():
     @web_app.get("/webhooks/instagram")
     async def verify_instagram_webhook(request: Request):
         from instagram_channel import verify_webhook_challenge
-
         mode = request.query_params.get("hub.mode", "")
         token = request.query_params.get("hub.verify_token", "")
         challenge = request.query_params.get("hub.challenge", "")
@@ -155,27 +184,19 @@ def web():
             verify_webhook_signature,
         )
         from message_service import handle_customer_message
-
         raw_body = await request.body()
         signature = request.headers.get("x-hub-signature-256")
         if not verify_webhook_signature(raw_body, signature):
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
-
         try:
             payload = json.loads(raw_body)
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise HTTPException(status_code=400, detail="Invalid JSON payload")
-
         if not isinstance(payload, dict) or payload.get("object") != "instagram":
             return {"status": "ignored"}
-
-        # Initial integration scaffold: text DMs only.
-        # Add persistent conversation history and event-id deduplication before
-        # relying on this for production sales.
         for incoming in extract_text_messages(payload):
             answer = await handle_customer_message(incoming["text"], history=[])
             await send_instagram_text(incoming["sender_id"], answer)
-
         return {"status": "received"}
 
     return web_app
