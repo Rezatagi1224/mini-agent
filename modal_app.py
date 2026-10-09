@@ -1,4 +1,3 @@
-
 import modal
 
 
@@ -10,6 +9,7 @@ image = (
     .add_local_python_source(
         "agent",
         "tools",
+        "products",
     )
     .add_local_dir(
         "frontend",
@@ -80,8 +80,6 @@ def web():
             history = []
 
         try:
-            print("HISTORY RECEIVED:")
-            print(history)
             answer = await run_agent(
                 message.strip(),
                 history,
