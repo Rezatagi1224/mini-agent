@@ -27,7 +27,7 @@
   for(const o of orders){const tr=document.createElement("tr");const values=[
    o.id+"\n"+new Date(o.created_at).toLocaleString("fa-IR"),
    o.customer_name+"\n"+o.phone+"\n"+o.address,
-   o.product_name+"\nسایز: "+o.size+" | رنگ: "+o.color+"\nتعداد: "+o.quantity+"\n"+(o.stock_check==="confirmed"?"موجودی ثبت‌شده بررسی شده":"نیازمند بررسی موجودی"),
+   o.product_name+"\nسایز: "+o.size+" | رنگ: "+o.color+"\nتعداد: "+o.quantity+"\n"+(o.stock_check==="confirmed"?"موجودی ثبت‌شده بررسی شده":"نیازمند بررسی موجودی")+"\n"+(o.inventory_deducted?"موجودی کسر شده":"موجودی هنوز کسر نشده"),
    "هر عدد: "+money(o.unit_price)+"\nمجموع: "+money(o.total_price)+"\nپرداخت: انجام نشده",
    o.status_label||o.status
   ];for(const v of values){const td=document.createElement("td");td.style.whiteSpace="pre-line";td.textContent=v;tr.appendChild(td)}
