@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مدیریت سفارش‌ها | Mini Agent</title>
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#18212f;background:#f3f5f8}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1200px;margin:auto;padding:18px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}h1{font-size:23px;margin:0 0 6px}p{color:#64748b;margin:0}.panel{background:#fff;border:1px solid #e1e6ee;border-radius:14px;padding:16px;margin-bottom:16px}.grid{display:grid;grid-template-columns:1fr auto;gap:10px}input,select{font:inherit;padding:11px;border:1px solid #cfd7e3;border-radius:8px;width:100%}button,a.btn{font:inherit;border:0;border-radius:8px;padding:10px 13px;background:#172033;color:#fff;cursor:pointer;text-decoration:none;display:inline-block}button.secondary,a.secondary{background:#e9edf3;color:#18212f}.status{white-space:pre-wrap;margin-top:10px;font-size:14px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:900px}th,td{text-align:right;padding:12px;border-bottom:1px solid #e8edf3;vertical-align:top;font-size:13px}th{color:#64748b}.muted{color:#64748b}.order-id{font-weight:bold}.pill{display:inline-block;border-radius:99px;background:#eef2f7;padding:4px 8px;margin-top:4px}.order-actions{display:flex;gap:6px;align-items:center;min-width:170px}.order-actions select{min-width:125px}.hidden{display:none!important}@media(max-width:600px){.wrap{padding:10px}h1{font-size:20px}.panel{padding:12px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body><div class="wrap">
+<header><div><h1>مدیریت سفارش‌ها</h1><p>سفارش‌ها ابتدا در انتظار تأیید هستند؛ پرداخت آنلاین فعال نیست.</p></div><div><a class="btn secondary" href="/admin">مدیریت محصولات</a> <button id="refresh">به‌روزرسانی</button></div></header>
+<section class="panel" id="login-panel"><h2>ورود مدیر</h2><p style="margin:8px 0 12px">از همان رمز پنل مدیریت استفاده کن.</p><div class="grid"><input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password"><button id="login">ورود</button></div><div id="login-status" class="status"></div></section>
+<section class="panel hidden" id="orders-panel"><div class="table-wrap"><table><thead><tr><th>سفارش</th><th>مشتری و ارسال</th><th>کالا</th><th>مبلغ</th><th>وضعیت</th><th>تغییر وضعیت</th></tr></thead><tbody id="orders"></tbody></table></div><div id="orders-status" class="status"></div></section>
+</div>
+<script>
+(() => {
+ const $=id=>document.getElementById(id);
+ let password=sessionStorage.getItem("mini_agent_admin_password")||"";
+ let orders=[];
+ const money=v=>Number(v||0).toLocaleString("fa-IR")+" تومان";
+ const statuses=[["pending","در انتظار تأیید"],["confirmed","تأیید شده"],["shipped","ارسال شده"],["cancelled","لغو شده"]];
+ function show(id,msg){$(id).textContent=msg}
+ async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{"Content-Type":"application/json","X-Admin-Password":password,...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"درخواست ناموفق بود.");return d}
+ async function load(){try{const d=await api("/admin/orders");orders=d.orders||[];$("login-panel").classList.add("hidden");$("orders-panel").classList.remove("hidden");render();show("login-status","")}catch(e){show("login-status",e.message)}}
+ function render(){const tbody=$("orders");tbody.replaceChildren();if(!orders.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=6;td.textContent="هنوز سفارشی ثبت نشده است.";tr.appendChild(td);tbody.appendChild(tr);return}
+  for(const o of orders){const tr=document.createElement("tr");const values=[
+   o.id+"\n"+new Date(o.created_at).toLocaleString("fa-IR"),
+   o.customer_name+"\n"+o.phone+"\n"+o.address,
+   o.product_name+"\nسایز: "+o.size+" | رنگ: "+o.color+"\nتعداد: "+o.quantity+"\n"+(o.stock_check==="confirmed"?"موجودی ثبت‌شده بررسی شده":"نیازمند بررسی موجودی"),
+   "هر عدد: "+money(o.unit_price)+"\nمجموع: "+money(o.total_price)+"\nپرداخت: انجام نشده",
+   o.status_label||o.status
+  ];for(const v of values){const td=document.createElement("td");td.style.whiteSpace="pre-line";td.textContent=v;tr.appendChild(td)}
+  const td=document.createElement("td"),wrap=document.createElement("div"),select=document.createElement("select"),btn=document.createElement("button");wrap.className="order-actions";for(const [value,label] of statuses){const op=document.createElement("option");op.value=value;op.textContent=label;select.appendChild(op)}select.value=o.status||"pending";btn.textContent="ذخیره";btn.addEventListener("click",()=>update(o.id,select.value,btn));wrap.append(select,btn);td.appendChild(wrap);tr.appendChild(td);tbody.appendChild(tr)
+  }
+ }
+ async function update(id,status,btn){btn.disabled=true;try{await api("/admin/orders/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});await load();show("orders-status","وضعیت سفارش به‌روزرسانی شد.")}catch(e){show("orders-status",e.message)}finally{btn.disabled=false}}
+ $("login").addEventListener("click",async()=>{password=$("password").value;await load();if(!$("orders-panel").classList.contains("hidden"))sessionStorage.setItem("mini_agent_admin_password",password)});
+ $("password").addEventListener("keydown",e=>{if(e.key==="Enter")$("login").click()});
+ $("refresh").addEventListener("click",async()=>{if(!password){$("login-panel").classList.remove("hidden");return}try{await load();show("orders-status","سفارش‌ها به‌روز شدند.")}catch(e){show("orders-status",e.message)}});
+ if(password){$("password").value=password;load()}
+})();
+</script></body></html>
