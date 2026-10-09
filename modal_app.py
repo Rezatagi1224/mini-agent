@@ -1,4 +1,5 @@
 import json
+import os
 
 import modal
 
@@ -10,6 +11,7 @@ image = (
         "agent",
         "tools",
         "products",
+        "product_store",
         "message_service",
         "instagram_channel",
     )
@@ -19,9 +21,14 @@ image = (
 
 app = modal.App("mini-agent")
 secret = modal.Secret.from_name("openrouter-secret")
+product_volume = modal.Volume.from_name("mini-agent-data", create_if_missing=True)
 
 
-@app.function(image=image, secrets=[secret])
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={"/data": product_volume},
+)
 @modal.asgi_app()
 def web():
     from fastapi import FastAPI, HTTPException, Request
@@ -32,6 +39,63 @@ def web():
     @web_app.get("/")
     async def home():
         return FileResponse("/root/frontend/index.html")
+
+    @web_app.get("/admin")
+    async def admin_page():
+        return FileResponse("/root/frontend/admin.html")
+
+    def require_admin(request: Request):
+        import hmac
+        expected = os.environ.get("ADMIN_PASSWORD", "")
+        supplied = request.headers.get("x-admin-password", "")
+        if not expected:
+            raise HTTPException(
+                status_code=503,
+                detail="رمز مدیریت تنظیم نشده است. ADMIN_PASSWORD را در Secret با نام openrouter-secret ثبت کن.",
+            )
+        if not supplied or not hmac.compare_digest(supplied, expected):
+            raise HTTPException(status_code=401, detail="رمز مدیریت نادرست است.")
+
+    @web_app.get("/admin/products")
+    async def admin_list_products(request: Request):
+        require_admin(request)
+        from product_store import load_products
+        return {"products": load_products()}
+
+    @web_app.post("/admin/products")
+    async def admin_create_product(request: Request, body: dict):
+        require_admin(request)
+        from product_store import load_products, save_products, normalize_product
+        products = load_products()
+        product = normalize_product(body)
+        if any(p.get("id") == product["id"] for p in products):
+            raise HTTPException(status_code=409, detail="شناسه محصول تکراری است.")
+        products.append(product)
+        save_products(products)
+        return {"ok": True, "product": product}
+
+    @web_app.put("/admin/products/{product_id}")
+    async def admin_update_product(product_id: str, request: Request, body: dict):
+        require_admin(request)
+        from product_store import load_products, save_products, normalize_product
+        products = load_products()
+        for index, current in enumerate(products):
+            if current.get("id") == product_id:
+                products[index] = normalize_product(body, existing=current)
+                save_products(products)
+                return {"ok": True, "product": products[index]}
+        raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
+
+    @web_app.delete("/admin/products/{product_id}")
+    async def admin_delete_product(product_id: str, request: Request):
+        require_admin(request)
+        from product_store import load_products, save_products
+        products = load_products()
+        remaining = [p for p in products if p.get("id") != product_id]
+        if len(remaining) == len(products):
+            raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
+        save_products(remaining)
+        return {"ok": True}
 
     @web_app.get("/style.css")
     async def style():
