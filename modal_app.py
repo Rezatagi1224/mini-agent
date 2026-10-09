@@ -59,12 +59,15 @@ def web():
     @web_app.get("/admin/products")
     async def admin_list_products(request: Request):
         require_admin(request)
+        product_volume.reload()
         from product_store import load_products
         return {"products": load_products()}
 
     @web_app.post("/admin/products")
     async def admin_create_product(request: Request, body: dict):
         require_admin(request)
+        product_volume.reload()
+        product_volume.reload()
         from product_store import load_products, save_products, normalize_product
         products = load_products()
         product = normalize_product(body)
@@ -72,6 +75,7 @@ def web():
             raise HTTPException(status_code=409, detail="شناسه محصول تکراری است.")
         products.append(product)
         save_products(products)
+        product_volume.commit()
         return {"ok": True, "product": product}
 
     @web_app.put("/admin/products/{product_id}")
@@ -83,18 +87,21 @@ def web():
             if current.get("id") == product_id:
                 products[index] = normalize_product(body, existing=current)
                 save_products(products)
+                product_volume.commit()
                 return {"ok": True, "product": products[index]}
         raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
 
     @web_app.delete("/admin/products/{product_id}")
     async def admin_delete_product(product_id: str, request: Request):
         require_admin(request)
+        product_volume.reload()
         from product_store import load_products, save_products
         products = load_products()
         remaining = [p for p in products if p.get("id") != product_id]
         if len(remaining) == len(products):
             raise HTTPException(status_code=404, detail="محصول پیدا نشد.")
         save_products(remaining)
+        product_volume.commit()
         return {"ok": True}
 
     @web_app.get("/style.css")
@@ -120,6 +127,7 @@ def web():
             history = []
 
         try:
+            product_volume.reload()
             answer = await handle_customer_message(message.strip(), history)
             return {"answer": answer}
         except Exception:
