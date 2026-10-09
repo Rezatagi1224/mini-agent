@@ -231,9 +231,13 @@ def submit_customer_order(
     if len(matches) != 1:
         return "محصول با نام دقیق در کاتالوگ پیدا نشد یا نام مبهم است؛ سفارش ثبت نشد."
     product = matches[0]
-    if product.get("sizes") and not any(_normalize(size) == _normalize(s) for s in product["sizes"]):
+    if not product.get("sizes"):
+        return "سایزهای این محصول در کاتالوگ ثبت نشده؛ سفارش ثبت نشد. ابتدا مشخصات محصول را در پنل کامل کن."
+    if not any(_normalize(size) == _normalize(s) for s in product["sizes"]):
         return "این سایز در مشخصات ثبت‌شده محصول نیست؛ سفارش ثبت نشد."
-    if product.get("colors") and not any(_normalize(color) == _normalize(c) for c in product["colors"]):
+    if not product.get("colors"):
+        return "رنگ‌های این محصول در کاتالوگ ثبت نشده؛ سفارش ثبت نشد. ابتدا مشخصات محصول را در پنل کامل کن."
+    if not any(_normalize(color) == _normalize(c) for c in product["colors"]):
         return "این رنگ در مشخصات ثبت‌شده محصول نیست؛ سفارش ثبت نشد."
     try:
         order = create_order(
