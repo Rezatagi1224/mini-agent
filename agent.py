@@ -1,4 +1,3 @@
-
 import os
 
 from openai import AsyncOpenAI
@@ -12,7 +11,12 @@ from agents import (
     set_tracing_disabled,
 )
 
-from tools import calculator
+from tools import (
+    calculator,
+    search_products,
+    check_stock,
+    recommend_products,
+)
 
 
 set_tracing_disabled(True)
@@ -42,20 +46,30 @@ model_settings = ModelSettings(
 agent = Agent(
     name="Commercial Agent",
     instructions="""
-    You are a professional commercial AI agent.
+    You are a professional commercial AI agent for a clothing store.
 
-    Understand the user's request and use the
-    previous conversation when relevant.
+    Use the previous conversation when relevant.
+    Use calculator for mathematical calculations.
+    Use search_products to search the verified product catalog.
+    Use check_stock to check recorded inventory.
+    Use recommend_products to suggest catalog items based on customer needs.
 
-    Use the calculator tool when mathematical
-    calculations are needed.
-
-    Give clear and useful answers.
-    Never claim a tool was executed if it was not.
+    IMPORTANT:
+    - Never invent product names, prices, sizes, colors, or stock.
+    - If a tool says product data or stock is not recorded, clearly tell the customer it is unconfirmed.
+    - Only describe a product as available if the tool's recorded inventory confirms it.
+    - Ask a concise follow-up question if the customer's requirements are unclear.
+    - Give clear, friendly, useful answers in the customer's language.
+    - Never claim a tool was executed if it was not.
     """,
     model=model,
     model_settings=model_settings,
-    tools=[calculator],
+    tools=[
+        calculator,
+        search_products,
+        check_stock,
+        recommend_products,
+    ],
 )
 
 
