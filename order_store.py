@@ -61,19 +61,19 @@ def create_order(*, customer_name, phone, address, product, size, color, quantit
     if not isinstance(price, (int, float)) or price < 0:
         raise ValueError("قیمت تأییدشده محصول ثبت نشده؛ سفارش ساخته نشد.")
     stock_map = product.get("stock_by_variant")
-    known_stock = None
+    variant_stock = None
     if isinstance(stock_map, dict):
         for key in (f"{color}|{size}", f"{size}|{color}"):
             if key in stock_map:
                 try:
-                    known_stock = int(stock_map[key])
+                    variant_stock = int(stock_map[key])
                 except (TypeError, ValueError):
-                    known_stock = None
+                    variant_stock = None
                 break
-    if known_stock is None and isinstance(product.get("stock"), int):
-        known_stock = product["stock"]
-    if known_stock is not None and quantity > known_stock:
-        raise ValueError(f"موجودی ثبت‌شده کافی نیست؛ موجودی فعلی {known_stock} عدد است.")
+    total_stock = product.get("stock") if isinstance(product.get("stock"), int) else None
+    stock_for_limit = variant_stock if variant_stock is not None else total_stock
+    if stock_for_limit is not None and quantity > stock_for_limit:
+        raise ValueError(f"موجودی ثبت‌شده کافی نیست؛ موجودی ثبت‌شده {stock_for_limit} عدد است.")
 
     order = {
         "id": "ORD-" + uuid.uuid4().hex[:8].upper(),
@@ -91,7 +91,7 @@ def create_order(*, customer_name, phone, address, product, size, color, quantit
         "unit_price": int(price),
         "total_price": int(price) * quantity,
         "currency": product.get("currency", "تومان"),
-        "stock_check": "confirmed" if known_stock is not None else "unverified",
+        "stock_check": "confirmed" if variant_stock is not None else "unverified",
         "payment_status": "unpaid",
     }
     orders = load_orders()
