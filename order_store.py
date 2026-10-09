@@ -158,8 +158,14 @@ def update_order_status(order_id, status):
     old_status = order.get("status", "pending")
     if old_status == status:
         return order
-    if old_status == "shipped" and status != "shipped":
-        raise ValueError("سفارش ارسال‌شده را نمی‌توان به وضعیت دیگری برگرداند.")
+    allowed_transitions = {
+        "pending": {"confirmed", "cancelled"},
+        "confirmed": {"shipped", "cancelled"},
+        "shipped": set(),
+        "cancelled": set(),
+    }
+    if status not in allowed_transitions.get(old_status, set()):
+        raise ValueError("این تغییر وضعیت مجاز نیست؛ وضعیت سفارش از مسیر فعلی قابل تغییر نیست.")
 
     # Validate and prepare inventory changes before writing either file.
     products = _load_products_file()
