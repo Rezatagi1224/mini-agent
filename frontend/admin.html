@@ -19,8 +19,11 @@
     .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.status{margin-top:12px;font-size:14px;white-space:pre-wrap}
     .table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:right;padding:12px;border-bottom:1px solid #e8edf3;font-size:14px}
     th{color:#64748b;font-weight:600}td .actions{margin:0}.empty{padding:24px;text-align:center;color:#64748b}
-    .top-actions{display:flex;gap:8px;flex-wrap:wrap}
-    @media(max-width:620px){.wrap{padding:12px}.grid{grid-template-columns:1fr}.wide{grid-column:auto}h1{font-size:20px}.panel{padding:13px}}
+    .top-actions{display:flex;gap:8px;flex-wrap:wrap}.hint{font-size:12px;color:#64748b;margin:8px 0}
+    .variant-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .variant-item{border:1px solid #e1e6ee;border-radius:10px;padding:10px;background:#fafbfd}
+    .variant-item label{margin-bottom:5px}.variant-item input{padding:8px}
+    @media(max-width:620px){.wrap{padding:12px}.grid{grid-template-columns:1fr}.wide{grid-column:auto}h1{font-size:20px}.panel{padding:13px}.variant-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
 </head>
 <body>
@@ -45,9 +48,13 @@
         <div><label for="name">نام محصول *</label><input id="name" required maxlength="160"></div>
         <div><label for="category">دسته‌بندی</label><input id="category" placeholder="مثلاً دورس، تی‌شرت، شلوار"></div>
         <div><label for="price">قیمت به تومان *</label><input id="price" required type="number" min="0" step="1"></div>
-        <div><label for="stock">موجودی کل (اگر تأیید شده)</label><input id="stock" type="number" min="0" step="1" placeholder="خالی = ثبت نشده"></div>
+        <div><label for="stock">موجودی کل (اختیاری، برای حالت بدون تفکیک)</label><input id="stock" type="number" min="0" step="1" placeholder="خالی = ثبت نشده"></div>
         <div><label for="sizes">سایزها</label><input id="sizes" placeholder="L, XL, 2XL, 3XL"></div>
         <div><label for="colors">رنگ‌ها</label><input id="colors" placeholder="مشکی، سفید، آبی"></div>
+        <div class="wide"><label><input id="variant-mode" type="checkbox" checked style="width:auto;vertical-align:middle"> مدیریت موجودی جداگانه برای هر رنگ و سایز</label>
+          <p class="hint">با فعال‌بودن این گزینه، فقط موجودی دقیق ترکیب‌های ثبت‌شده قابل تأیید است. ترکیبی که خالی بماند، موجودی تأییدشده ندارد.</p>
+          <div id="variant-stock-fields" class="variant-grid"></div>
+        </div>
         <div class="wide"><label for="description">توضیحات</label><textarea id="description"></textarea></div>
         <div class="wide"><label for="tags">کلیدواژه‌ها (با ویرگول جدا کن)</label><input id="tags" placeholder="راحت، روزمره، دو نخ"></div>
       </div>
@@ -68,6 +75,7 @@
   let password = sessionStorage.getItem("mini_agent_admin_password") || "";
   let products = [];
   let editingId = null;
+  let editingStockMap = {};
   const money = value => Number(value).toLocaleString("fa-IR") + " تومان";
   const split = value => value.split(/[,،]/).map(x => x.trim()).filter(Boolean);
   const setStatus = (id, message) => $(id).textContent = message;
@@ -82,18 +90,21 @@
     return data;
   }
 
-  async function loadCatalog() {
-    setStatus("login-status", "در حال دریافت کاتالوگ...");
-    try {
-      const data = await api("/admin/products");
-      products = data.products || [];
-      $("login-panel").hidden = true;
-      $("editor-panel").hidden = false;
-      $("catalog-panel").hidden = false;
-      render();
-      setStatus("login-status", "");
-    } catch (error) {
-      setStatus("login-status", error.message);
+  function renderVariantFields() {
+    const holder = $("variant-stock-fields");
+    holder.replaceChildren();
+    if (!$("variant-mode").checked) { holder.textContent = "موجودی تفکیک‌شده غیرفعال است."; return; }
+    const sizes = split($("sizes").value);
+    const colors = split($("colors").value);
+    if (!sizes.length || !colors.length) { holder.textContent = "برای تعریف موجودی تفکیک‌شده، ابتدا حداقل یک سایز و یک رنگ وارد کن."; return; }
+    for (const color of colors) for (const size of sizes) {
+      const key = color + "|" + size;
+      const item = document.createElement("div"); item.className = "variant-item";
+      const label = document.createElement("label"); label.textContent = color + " — " + size;
+      const input = document.createElement("input"); input.type = "number"; input.min = "0"; input.step = "1";
+      input.placeholder = "موجودی عددی"; input.dataset.stockKey = key;
+      if (Object.prototype.hasOwnProperty.call(editingStockMap, key)) input.value = editingStockMap[key];
+      item.append(label, input); holder.appendChild(item);
     }
   }
 
@@ -108,15 +119,16 @@
     }
     for (const product of products) {
       const row = document.createElement("tr");
+      const variantCount = Object.keys(product.stock_by_variant || {}).length;
       const values = [
         product.name + (product.category ? "\n" + product.category : ""),
         money(product.price),
         (product.sizes || []).join("، ") || "ثبت نشده",
         (product.colors || []).join("، ") || "ثبت نشده",
-        Number.isInteger(product.stock) ? product.stock.toLocaleString("fa-IR") + " عدد" : "ثبت نشده"
+        variantCount ? variantCount.toLocaleString("fa-IR") + " ترکیب دارای موجودی" : (Number.isInteger(product.stock) ? product.stock.toLocaleString("fa-IR") + " عدد کل" : "ثبت نشده")
       ];
       for (const value of values) {
-        const cell = document.createElement("td"); cell.textContent = value; row.appendChild(cell);
+        const cell = document.createElement("td"); cell.style.whiteSpace = "pre-line"; cell.textContent = value; row.appendChild(cell);
       }
       const actions = document.createElement("td");
       const edit = document.createElement("button"); edit.textContent = "ویرایش"; edit.className = "secondary";
@@ -132,6 +144,7 @@
     const product = products.find(item => item.id === id);
     if (!product) return;
     editingId = id;
+    editingStockMap = {...(product.stock_by_variant || {})};
     $("form-title").textContent = "ویرایش محصول";
     $("name").value = product.name || "";
     $("category").value = product.category || "";
@@ -139,15 +152,19 @@
     $("stock").value = product.stock ?? "";
     $("sizes").value = (product.sizes || []).join(", ");
     $("colors").value = (product.colors || []).join(", ");
+    $("variant-mode").checked = !!product.stock_by_variant && typeof product.stock_by_variant === "object";
     $("description").value = product.description || "";
     $("tags").value = (product.tags || []).join(", ");
+    renderVariantFields();
     setStatus("form-status", "حالت ویرایش: " + product.name);
     $("editor-panel").scrollIntoView({behavior:"smooth"});
   }
 
   function resetForm() {
-    editingId = null; $("product-form").reset();
+    editingId = null; editingStockMap = {}; $("product-form").reset();
+    $("variant-mode").checked = true;
     $("form-title").textContent = "افزودن محصول";
+    renderVariantFields();
     setStatus("form-status", "");
   }
 
@@ -162,12 +179,35 @@
     try { const data = await api("/admin/products"); products = data.products || []; render(); setStatus("catalog-status", "کاتالوگ به‌روز شد."); }
     catch (error) { setStatus("catalog-status", error.message); }
   });
+  async function loadCatalog() {
+    setStatus("login-status", "در حال دریافت کاتالوگ...");
+    try {
+      const data = await api("/admin/products");
+      products = data.products || [];
+      $("login-panel").hidden = true; $("editor-panel").hidden = false; $("catalog-panel").hidden = false;
+      render(); setStatus("login-status", "");
+    } catch (error) { setStatus("login-status", error.message); }
+  }
+  $("sizes").addEventListener("input", renderVariantFields);
+  $("colors").addEventListener("input", renderVariantFields);
+  $("variant-mode").addEventListener("change", renderVariantFields);
   $("product-form").addEventListener("submit", async event => {
     event.preventDefault();
+    const variantMode = $("variant-mode").checked;
+    const stockByVariant = {};
+    if (variantMode) {
+      for (const input of $("variant-stock-fields").querySelectorAll("input[data-stock-key]")) {
+        if (input.value.trim() === "") continue;
+        const value = Number(input.value);
+        if (!Number.isInteger(value) || value < 0) { setStatus("form-status", "موجودی هر ترکیب باید عدد صحیح نامنفی باشد."); return; }
+        stockByVariant[input.dataset.stockKey] = value;
+      }
+    }
     const product = {
       name: $("name").value.trim(), category: $("category").value.trim(),
       price: $("price").value, stock: $("stock").value,
       sizes: split($("sizes").value), colors: split($("colors").value),
+      stock_by_variant: variantMode ? stockByVariant : null,
       description: $("description").value.trim(), tags: split($("tags").value)
     };
     $("save").disabled = true;
@@ -195,6 +235,7 @@
     password = ""; sessionStorage.removeItem("mini_agent_admin_password");
     $("password").value = ""; $("editor-panel").hidden = true; $("catalog-panel").hidden = true; $("login-panel").hidden = false; resetForm();
   });
+  resetForm();
   if (password) { $("password").value = password; loadCatalog(); }
 })();
 </script>
