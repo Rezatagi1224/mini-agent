@@ -1,1 +1,99 @@
-<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>داشبورد فروش</title><style>body{font-family:tahoma;background:#f5f7fb;padding:20px}.box{background:white;border-radius:14px;padding:18px;margin:10px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{background:#fff;padding:20px;border-radius:12px;border:1px solid #ddd}button,input{padding:10px;border-radius:8px;border:1px solid #ccc}button{cursor:pointer;background:#18212f;color:white}</style></head><body><h1>داشبورد فروش</h1><input id="pass" type="password" placeholder="رمز مدیریت"><button onclick="load()">نمایش</button><div id="app"></div><script>async function load(){let r=await fetch('/admin/dashboard',{headers:{'x-admin-password':pass.value}});let d=await r.json();if(!r.ok){app.innerHTML=d.detail;return}app.innerHTML=`<div class="grid"><div class="card">کل سفارش: ${d.orders.total}</div><div class="card">در انتظار: ${d.orders.pending}</div><div class="card">تایید شده: ${d.orders.confirmed}</div><div class="card">فروش تایید شده: ${d.sales.confirmed_amount.toLocaleString()} تومان</div></div><div class="box"><h3>محصولات پرفروش</h3>${d.top_products.map(x=>x.name+' - '+x.quantity+' عدد').join('<br>')}</div>`}</script></body></html>
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>داشبورد فروش | Mini Agent</title>
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#18212f;background:#f3f5f8}
+*{box-sizing:border-box}body{margin:0;padding:16px}.wrap{max-width:1100px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:24px;margin:0 0 6px}p{color:#64748b;margin:0}
+.panel,.card{background:#fff;border:1px solid #e1e6ee;border-radius:14px;padding:18px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px}
+.card .label{font-size:13px;color:#64748b;margin-bottom:10px}.card .value{font-size:22px;font-weight:bold;overflow-wrap:anywhere}
+button,input,a.btn{font:inherit;border-radius:8px;padding:10px 13px;border:1px solid #cfd7e3}
+button,a.btn{cursor:pointer;background:#172033;color:white;text-decoration:none;display:inline-block}
+a.secondary{background:#e9edf3;color:#18212f;border:0}.nav{display:flex;gap:8px;flex-wrap:wrap}
+input{width:min(100%,420px)}.status{margin-top:10px;white-space:pre-wrap}
+table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;border-bottom:1px solid #e8edf3;font-size:14px}
+.table-wrap{overflow-x:auto}.muted{color:#64748b;font-size:13px}
+@media(max-width:600px){body{padding:10px}h1{font-size:20px}.panel,.card{padding:13px}}
+</style>
+</head>
+<body><main class="wrap">
+<header>
+  <div><h1>داشبورد فروش</h1><p>گزارش سفارش‌ها و محصولات پرفروش</p></div>
+  <nav class="nav">
+    <a class="btn secondary" href="/admin">مدیریت محصولات</a>
+    <a class="btn secondary" href="/admin/orders-page">مدیریت سفارش‌ها</a>
+  </nav>
+</header>
+<section class="panel" id="login-panel">
+  <h2>ورود مدیر</h2>
+  <p style="margin-bottom:12px">همان رمز پنل مدیریت محصولات را وارد کن.</p>
+  <form id="login-form"><input id="pass" type="password" placeholder="رمز مدیریت" autocomplete="current-password" required> <button type="submit" id="load-btn">نمایش گزارش‌ها</button></form>
+  <div class="status" id="status" role="status"></div>
+</section>
+<section id="report-panel" hidden>
+  <div class="grid" id="metrics"></div>
+  <section class="panel"><h2>۵ محصول پرفروش</h2><div class="table-wrap"><table><thead><tr><th>محصول</th><th>تعداد فروخته‌شده</th></tr></thead><tbody id="top-products"></tbody></table></div></section>
+  <p class="muted">مبلغ فروش بر اساس سفارش‌های تأییدشده محاسبه می‌شود؛ چون پرداخت آنلاین فعال نیست، این مبلغ لزوماً به معنی پول دریافت‌شده نیست.</p>
+</section>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let password = sessionStorage.getItem("mini_agent_admin_password") || "";
+  const money = value => Number(value || 0).toLocaleString("fa-IR") + " تومان";
+  async function load(event) {
+    if (event) event.preventDefault();
+    password = $("pass").value.trim();
+    $("status").textContent = "در حال دریافت گزارش‌ها...";
+    $("load-btn").disabled = true;
+    try {
+      const response = await fetch("/admin/dashboard", {headers: {"X-Admin-Password": password}});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "دریافت گزارش‌ها ناموفق بود.");
+      sessionStorage.setItem("mini_agent_admin_password", password);
+      $("login-panel").hidden = true;
+      $("report-panel").hidden = false;
+      const metrics = [
+        ["کل سفارش‌ها", data.orders.total],
+        ["در انتظار تأیید", data.orders.pending],
+        ["تأییدشده و ارسال‌شده", data.orders.confirmed],
+        ["مبلغ فروش تأییدشده", money(data.sales.confirmed_amount)],
+        ["مبلغ سفارش‌های لغوشده", money(data.sales.cancelled_amount)]
+      ];
+      $("metrics").replaceChildren();
+      for (const [label, value] of metrics) {
+        const card = document.createElement("div"); card.className = "card";
+        const l = document.createElement("div"); l.className = "label"; l.textContent = label;
+        const v = document.createElement("div"); v.className = "value"; v.textContent = value;
+        card.append(l, v); $("metrics").appendChild(card);
+      }
+      const tbody = $("top-products"); tbody.replaceChildren();
+      if (!data.top_products || !data.top_products.length) {
+        const tr = document.createElement("tr"), td = document.createElement("td");
+        td.colSpan = 2; td.textContent = "هنوز فروش تأییدشده‌ای ثبت نشده است.";
+        tr.appendChild(td); tbody.appendChild(tr);
+      } else {
+        for (const product of data.top_products) {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td"); name.textContent = product.name || "محصول بدون نام";
+          const quantity = document.createElement("td"); quantity.textContent = Number(product.quantity || 0).toLocaleString("fa-IR") + " عدد";
+          tr.append(name, quantity); tbody.appendChild(tr);
+        }
+      }
+      $("status").textContent = "";
+    } catch (error) {
+      $("status").textContent = error.message;
+      $("report-panel").hidden = true;
+      $("login-panel").hidden = false;
+    } finally { $("load-btn").disabled = false; }
+  }
+  $("login-form").addEventListener("submit", load);
+  if (password) { $("pass").value = password; load(); }
+})();
+</script>
+</body></html>
