@@ -2,7 +2,7 @@ import json
 import unicodedata
 
 from agents import function_tool
-from products import PRODUCTS
+from product_store import load_products
 
 
 def _normalize(value: str) -> str:
@@ -73,12 +73,12 @@ def search_products(
         color: Requested color.
         max_results: Maximum number of results, from 1 to 10.
     """
-    if not PRODUCTS:
+    if not load_products():
         return "کاتالوگ محصول هنوز خالی است؛ ابتدا محصولات واقعی فروشگاه را در products.py ثبت کن."
 
     max_results = max(1, min(int(max_results), 10))
     matches = []
-    for product in PRODUCTS:
+    for product in load_products():
         if not isinstance(product, dict):
             continue
         if not _contains(_product_text(product), query):
@@ -119,7 +119,7 @@ def check_stock(
         color: Requested color, if relevant.
     """
     matches = [
-        p for p in PRODUCTS
+        p for p in load_products()
         if isinstance(p, dict) and (
             _normalize(product_name) == _normalize(p.get("id", ""))
             or _normalize(product_name) == _normalize(p.get("name", ""))
