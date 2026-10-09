@@ -62,6 +62,8 @@ def normalize_product(payload, existing=None):
         return [str(part).strip() for part in value if str(part).strip()][:100]
 
     product_id = str((existing or {}).get("id") or payload.get("id") or uuid.uuid4().hex[:12])
+    sizes = list_field("sizes")
+    colors = list_field("colors")
     product = {
         "id": product_id,
         "name": name,
@@ -69,8 +71,8 @@ def normalize_product(payload, existing=None):
         "description": str(payload.get("description", "")).strip()[:1000],
         "price": price,
         "currency": "تومان",
-        "sizes": list_field("sizes"),
-        "colors": list_field("colors"),
+        "sizes": sizes,
+        "colors": colors,
         "tags": list_field("tags"),
     }
 
@@ -86,7 +88,25 @@ def normalize_product(payload, existing=None):
     elif "stock" not in payload and existing and isinstance(existing.get("stock"), int):
         product["stock"] = existing["stock"]
 
-    if existing and isinstance(existing.get("stock_by_variant"), dict):
+    if "stock_by_variant" in payload:
+        raw_map = payload.get("stock_by_variant")
+        if raw_map is not None:
+            if not isinstance(raw_map, dict):
+                raise ValueError("موجودی سایز و رنگ باید به‌صورت جدول معتبر ارسال شود.")
+            valid_keys = {f"{color}|{size}" for color in colors for size in sizes}
+            variant_map = {}
+            for key, value in raw_map.items():
+                if key not in valid_keys:
+                    raise ValueError("یکی از ترکیب‌های موجودی با سایز یا رنگ محصول مطابقت ندارد.")
+                try:
+                    stock = int(str(value).strip())
+                except (TypeError, ValueError):
+                    raise ValueError("موجودی هر ترکیب باید عدد صحیح باشد.")
+                if stock < 0:
+                    raise ValueError("موجودی هر ترکیب نمی‌تواند منفی باشد.")
+                variant_map[key] = stock
+            product["stock_by_variant"] = variant_map
+    elif existing and isinstance(existing.get("stock_by_variant"), dict):
         product["stock_by_variant"] = existing["stock_by_variant"]
 
     return product
