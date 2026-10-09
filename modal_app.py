@@ -130,7 +130,10 @@ def web():
         status = body.get("status")
         if status not in STATUSES:
             raise HTTPException(status_code=422, detail="وضعیت سفارش نامعتبر است.")
-        order = update_order_status(order_id, status)
+        try:
+            order = update_order_status(order_id, status)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error))
         if order is None:
             raise HTTPException(status_code=404, detail="سفارش پیدا نشد.")
         product_volume.commit()
