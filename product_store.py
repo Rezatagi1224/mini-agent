@@ -1,16 +1,12 @@
 import json
-import os
-import re
 import uuid
 from pathlib import Path
 
-import modal
 
 from products import PRODUCTS as DEFAULT_PRODUCTS
 
 
 DATA_FILE = Path("/data/products.json")
-VOLUME = modal.Volume.from_name("mini-agent-data", create_if_missing=True)
 
 
 def _copy_products(items):
@@ -19,7 +15,6 @@ def _copy_products(items):
 
 def load_products():
     """Load the latest catalog from persistent Modal Volume, falling back to seed data."""
-    VOLUME.reload()
     if DATA_FILE.exists():
         try:
             data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
@@ -41,7 +36,6 @@ def save_products(products):
         encoding="utf-8",
     )
     temporary.replace(DATA_FILE)
-    VOLUME.commit()
 
 
 def normalize_product(payload, existing=None):
@@ -89,7 +83,7 @@ def normalize_product(payload, existing=None):
         if stock < 0:
             raise ValueError("موجودی نمی‌تواند منفی باشد.")
         product["stock"] = stock
-    elif existing and isinstance(existing.get("stock"), int):
+    elif "stock" not in payload and existing and isinstance(existing.get("stock"), int):
         product["stock"] = existing["stock"]
 
     if existing and isinstance(existing.get("stock_by_variant"), dict):
