@@ -26,13 +26,13 @@ th{color:#64748b}.status{white-space:pre-wrap;margin-top:10px;font-size:14px}.mu
  <nav class="nav">
   <a class="btn secondary" href="/admin">محصولات</a>
   <a class="btn secondary" href="/admin/orders-page">سفارش‌ها</a>
-  <a class="btn secondary" href="/admin/dashboard-page">داشبورد فروش</a>
+  <a class="btn secondary" href="/admin/dashboard-page">داشبورد فروش</a><a class="btn secondary" href="/admin/stores-page">مدیریت فروشگاه‌ها</a>
   <button id="refresh" type="button">به‌روزرسانی</button>
  </nav>
 </header>
 <section class="panel" id="login-panel">
  <h2>ورود مدیر</h2><p style="margin-bottom:12px">از همان رمز پنل مدیریت استفاده کن.</p>
- <form id="login-form" class="login-grid"><input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password" required><button id="login" type="submit">نمایش مشتریان</button></form>
+ <form id="login-form" class="login-grid"><input id="store-id" value="default" placeholder="شناسه فروشگاه (پیش‌فرض: default)" autocomplete="organization" required><input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password" required><button id="login" type="submit">نمایش مشتریان</button></form>
  <div id="login-status" class="status" role="status"></div>
 </section>
 <section id="customers-panel" hidden>
@@ -90,7 +90,7 @@ th{color:#64748b}.status{white-space:pre-wrap;margin-top:10px;font-size:14px}.mu
     const loginResponse = await fetch("/admin/login", {
      method:"POST", credentials:"same-origin",
      headers:{"Content-Type":"application/json"},
-     body:JSON.stringify({password:loginPassword})
+     body:JSON.stringify({store_id:$("store-id").value.trim()||"default",password:loginPassword})
     });
     const loginData = await loginResponse.json().catch(()=>({}));
     if(!loginResponse.ok) throw new Error(loginData.detail || "ورود ناموفق بود.");
