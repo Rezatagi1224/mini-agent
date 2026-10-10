@@ -7,7 +7,7 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store")
+    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils")
     .add_local_dir("frontend", "/root/frontend")
 )
 

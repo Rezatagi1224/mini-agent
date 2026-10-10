@@ -2,6 +2,12 @@
 
 A Persian-language AI sales assistant for a clothing store, with catalog, inventory, order review, and sales dashboard.
 
+## Inventory-safe recommendations
+
+- Exact size/color stock uses the recorded variant map.
+- Total stock alone never proves a specific size or color is available.
+- Recommendations skip variants confirmed to have zero stock and mark incomplete inventory as unverified.
+
 ## Server-side conversation memory
 
 - The web chat creates a random browser session ID and keeps it in local storage.

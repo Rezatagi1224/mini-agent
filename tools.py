@@ -3,6 +3,7 @@ import unicodedata
 from agents import function_tool
 from product_store import load_products
 from order_store import create_order
+from inventory_utils import stock_status, stock_message
 
 
 def _normalize(value: str) -> str:
@@ -93,24 +94,19 @@ def search_products(
         return "محصولی مطابق فیلترهای واردشده در کاتالوگ پیدا نشد."
     lines = []
     for p in matches[:max_results]:
+        inventory = stock_message(p, size=size, color=color)
         lines.append(
             f"- {p.get('name', 'نامشخص')} | شناسه: {p.get('id', 'ثبت نشده')} | "
             f"دسته: {p.get('category', 'ثبت نشده')} | قیمت: {_format_price(p)} | "
             f"سایزها: {', '.join(map(str, p.get('sizes', []))) or 'ثبت نشده'} | "
-            f"رنگ‌ها: {', '.join(map(str, p.get('colors', []))) or 'ثبت نشده'}"
+            f"رنگ‌ها: {', '.join(map(str, p.get('colors', []))) or 'ثبت نشده'} | {inventory}"
         )
     return "\n".join(lines)
 
 
 @function_tool
 def check_stock(product_name: str, size: str = "", color: str = "") -> str:
-    """Check recorded stock for a product and optional size and color.
-
-    Args:
-        product_name: Product name or exact product ID.
-        size: Requested size, if relevant.
-        color: Requested color, if relevant.
-    """
+    """Check stock without assuming total product stock proves variant availability."""
     matches = [
         p for p in load_products()
         if isinstance(p, dict) and (
@@ -124,39 +120,12 @@ def check_stock(product_name: str, size: str = "", color: str = "") -> str:
     if len(matches) > 1:
         names = "، ".join(str(p.get("name", "نامشخص")) for p in matches[:5])
         return f"چند محصول پیدا شد ({names}). لطفاً نام دقیق‌تر یا شناسه محصول را بده."
-    product = matches[0]
-    stock_map = product.get("stock_by_variant")
-    if not isinstance(stock_map, dict):
-        stock_map = {}
-    keys = []
-    if size and color:
-        keys = [f"{color}|{size}", f"{size}|{color}"]
-    elif size:
-        keys = [size] + [k for k in stock_map if _normalize(k).endswith("|" + _normalize(size))]
-    elif color:
-        keys = [color] + [k for k in stock_map if _normalize(k).startswith(_normalize(color) + "|")]
-    else:
-        total = product.get("stock")
-        if isinstance(total, (int, float)) and total >= 0:
-            return f"موجودی ثبت‌شده {product.get('name')}: {total:g} عدد."
-        return "موجودی کل این محصول ثبت نشده است؛ عددی برای موجودی نمی‌توان تأیید کرد."
-    for key in keys:
-        if key in stock_map and isinstance(stock_map[key], (int, float)) and stock_map[key] >= 0:
-            variant = "، ".join(x for x in [color, size] if x)
-            return f"موجودی ثبت‌شده {product.get('name')} ({variant or key}): {stock_map[key]:g} عدد."
-    variant = "، ".join(x for x in [color, size] if x)
-    return f"موجودی {product.get('name')} برای {variant or 'این محصول'} در داده‌ها ثبت نشده است؛ موجود یا ناموجود بودن قابل تأیید نیست."
+    return stock_message(matches[0], size=size, color=color)
 
 
 @function_tool
-def recommend_products(
-    occasion: str = "",
-    budget: float = 0,
-    size: str = "",
-    style: str = "",
-    color: str = "",
-) -> str:
-    """Recommend catalog products matching a customer's needs using recorded data only.
+def recommend_products(occasion: str = "", budget: float = 0, size: str = "", style: str = "", color: str = "") -> str:
+    """Recommend products using verified catalog details and conservative stock checks.
 
     Args:
         occasion: Occasion, such as everyday, work, or party.
@@ -168,6 +137,7 @@ def recommend_products(
     products = load_products()
     if not products:
         return "برای پیشنهاد واقعی، ابتدا محصولات و مشخصات تأییدشده را در پنل ثبت کن."
+
     matches = []
     for product in products:
         if not isinstance(product, dict):
@@ -179,20 +149,34 @@ def recommend_products(
             continue
         if size and not any(_normalize(size) == _normalize(s) for s in product.get("sizes", [])):
             continue
-        if color and not any(_normalize(color) in _normalize(c) for c in product.get("colors", [])):
+        if color and not any(_normalize(color) == _normalize(c) for c in product.get("colors", [])):
             continue
         price = product.get("price")
-        if budget > 0 and (not isinstance(price, (int, float)) or price < 0 or price > budget):
+        if budget > 0 and (
+            not isinstance(price, (int, float)) or isinstance(price, bool)
+            or price < 0 or price > budget
+        ):
             continue
-        matches.append(product)
+        inventory = stock_status(product, size=size, color=color)
+        if inventory["status"] == "out_of_stock":
+            continue
+        matches.append((product, inventory))
+
     if not matches:
-        return "محصول ثبت‌شده‌ای با تمام شرایط درخواستی پیدا نشد. می‌توانی یکی از فیلترها را تغییر بدهی."
-    matches.sort(key=lambda p: (not bool(p.get("stock_by_variant") or p.get("stock") is not None), str(p.get("name", ""))))
+        return ("محصولی با این شرایط و موجودی ثبت‌شدهٔ قابل استفاده پیدا نشد. "
+                "می‌توانی سایز، رنگ، سبک یا بودجه را تغییر بدهی؛ موجودی ثبت‌نشده هم باید توسط فروشگاه بررسی شود.")
+
+    matches.sort(key=lambda pair: (
+        pair[1]["status"] != "available",
+        -(pair[1]["quantity"] or 0),
+        str(pair[0].get("name", "")),
+    ))
     return "\n".join(
-        f"- {p.get('name', 'نامشخص')} | قیمت: {_format_price(p)} | "
-        f"سایزها: {', '.join(map(str, p.get('sizes', []))) or 'ثبت نشده'} | "
-        f"رنگ‌ها: {', '.join(map(str, p.get('colors', []))) or 'ثبت نشده'}"
-        for p in matches[:5]
+        f"- {product.get('name', 'نامشخص')} | قیمت: {_format_price(product)} | "
+        f"سایزها: {', '.join(map(str, product.get('sizes', []))) or 'ثبت نشده'} | "
+        f"رنگ‌ها: {', '.join(map(str, product.get('colors', []))) or 'ثبت نشده'} | "
+        f"{stock_message(product, size=size, color=color, status=inventory)}"
+        for product, inventory in matches[:5]
     )
 
 
