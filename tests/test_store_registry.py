@@ -54,9 +54,11 @@ class StoreRegistryTests(unittest.TestCase):
         self.assertTrue(store_registry.is_store_active("shop-a"))
         self.assertTrue(store_registry.verify_store_password("shop-a", "a-very-long-test-password"))
 
-    def test_password_reset_invalidates_old_password(self):
+    def test_password_reset_invalidates_old_password_and_advances_session_version(self):
         store_registry.create_store("shop-a", "الف", "a-very-long-test-password")
+        initial_version = store_registry.get_store_auth_version("shop-a")
         store_registry.reset_store_password("shop-a", "a-different-long-password")
+        self.assertEqual(store_registry.get_store_auth_version("shop-a"), initial_version + 1)
         self.assertFalse(store_registry.verify_store_password("shop-a", "a-very-long-test-password"))
         self.assertTrue(store_registry.verify_store_password("shop-a", "a-different-long-password"))
 
