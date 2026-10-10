@@ -12,16 +12,16 @@ class DashboardAnalyticsTests(unittest.TestCase):
         orders = [
             {"id": "1", "status": "pending", "phone": "۰۹۱۲-۳۴۵-۶۷۸۹", "total_price": 100, "quantity": 1,
              "product_name": "پیراهن", "created_at": "2026-10-10T09:00:00Z"},
-            {"id": "2", "status": "confirmed", "phone": "0912 345 6789", "total_price": 200, "quantity": 2,
+            {"id": "2", "status": "confirmed", "phone": "0912 345 6789", "total_price": 200, "unit_cost": 100, "quantity": 2,
              "product_name": "پیراهن", "created_at": "2026-10-10T10:00:00Z"},
-            {"id": "3", "status": "shipped", "payment_status": "paid", "phone": "+98 9123456789", "total_price": 300, "quantity": 3,
+            {"id": "3", "status": "shipped", "payment_status": "paid", "phone": "+98 9123456789", "total_price": 300, "unit_cost": 50, "quantity": 3,
              "product_name": "پیراهن", "created_at": "2026-10-09T10:00:00Z"},
             {"id": "4", "status": "cancelled", "phone": "0935", "total_price": 50, "quantity": 1,
              "product_name": "تی‌شرت", "created_at": "2026-10-10T10:00:00Z"},
             {"id": "5", "status": "confirmed", "phone": "0988", "total_price": 700, "quantity": 1,
              "product_name": "کاپشن", "created_at": "2026-09-20T10:00:00Z"},
         ]
-        result = build_dashboard(orders, [], now=self.now)
+        result = build_dashboard(orders, [], now=self.now, expenses=[{"amount": 40}])
         self.assertEqual(result["orders"]["total"], 5)
         self.assertEqual(result["orders"]["pending"], 1)
         self.assertEqual(result["orders"]["confirmed"], 2)
@@ -32,6 +32,11 @@ class DashboardAnalyticsTests(unittest.TestCase):
         self.assertEqual(result["sales"]["paid_amount"], 300)
         self.assertEqual(result["sales"]["outstanding_amount"], 900)
         self.assertEqual(result["sales"]["refunded_amount"], 0)
+        self.assertEqual(result["sales"]["gross_profit_recorded"], 150)
+        self.assertEqual(result["sales"]["recorded_expenses"], 40)
+        self.assertEqual(result["sales"]["net_profit_recorded"], 110)
+        self.assertEqual(result["sales"]["orders_missing_cost"], 1)
+        self.assertFalse(result["sales"]["profit_complete"])
         self.assertEqual(result["sales"]["cancelled_amount"], 50)
         self.assertEqual(result["sales"]["last_7_days_amount"], 500)
         self.assertEqual(result["sales"]["average_order_amount"], 400)

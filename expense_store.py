@@ -1,0 +1,62 @@
+"""Manual expense ledger for store-level profit reporting."""
+import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+DATA_FILE = Path("/data/expenses.json")
+
+
+def load_expenses():
+    if not DATA_FILE.exists():
+        return []
+    try:
+        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_expenses(expenses):
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = DATA_FILE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(expenses, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(DATA_FILE)
+
+
+def create_expense(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("اطلاعات هزینه نامعتبر است.")
+    description = str(payload.get("description", "")).strip()
+    category = str(payload.get("category", "")).strip()
+    if not description or len(description) > 160:
+        raise ValueError("شرح هزینه الزامی است و حداکثر ۱۶۰ نویسه باشد.")
+    if len(category) > 80:
+        raise ValueError("دسته هزینه حداکثر ۸۰ نویسه باشد.")
+    try:
+        amount = int(str(payload.get("amount", "")).replace(",", "").strip())
+    except (TypeError, ValueError):
+        raise ValueError("مبلغ هزینه باید عدد صحیح به تومان باشد.")
+    if amount <= 0:
+        raise ValueError("مبلغ هزینه باید بیشتر از صفر باشد.")
+    expenses = load_expenses()
+    expense = {
+        "id": "EXP-" + uuid.uuid4().hex[:10].upper(),
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "description": description,
+        "category": category,
+        "amount": amount,
+        "currency": "تومان",
+    }
+    expenses.insert(0, expense)
+    _save_expenses(expenses)
+    return expense
+
+
+def delete_expense(expense_id):
+    expenses = load_expenses()
+    remaining = [item for item in expenses if item.get("id") != expense_id]
+    if len(remaining) == len(expenses):
+        return False
+    _save_expenses(remaining)
+    return True

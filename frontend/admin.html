@@ -47,7 +47,8 @@
       <div class="grid">
         <div><label for="name">نام محصول *</label><input id="name" required maxlength="160"></div>
         <div><label for="category">دسته‌بندی</label><input id="category" placeholder="مثلاً دورس، تی‌شرت، شلوار"></div>
-        <div><label for="price">قیمت به تومان *</label><input id="price" required type="number" min="0" step="1"></div>
+        <div><label for="price">قیمت فروش (تومان) *</label><input id="price" required type="number" min="0" step="1"></div>
+        <div><label for="cost-price">بهای خرید هر عدد (تومان، اختیاری)</label><input id="cost-price" type="number" min="0" step="1" placeholder="برای محاسبه سود"></div>
         <div><label for="stock">موجودی کل (اختیاری، برای حالت بدون تفکیک)</label><input id="stock" type="number" min="0" step="1" placeholder="خالی = ثبت نشده"></div>
         <div><label for="sizes">سایزها</label><input id="sizes" placeholder="L, XL, 2XL, 3XL"></div>
         <div><label for="colors">رنگ‌ها</label><input id="colors" placeholder="مشکی، سفید، آبی"></div>
@@ -122,7 +123,7 @@
       const variantCount = Object.keys(product.stock_by_variant || {}).length;
       const values = [
         product.name + (product.category ? "\n" + product.category : ""),
-        money(product.price),
+        money(product.price) + (Number.isInteger(product.cost_price) ? "\nبهای خرید: " + money(product.cost_price) : "\nبهای خرید: ثبت نشده"),
         (product.sizes || []).join("، ") || "ثبت نشده",
         (product.colors || []).join("، ") || "ثبت نشده",
         variantCount ? variantCount.toLocaleString("fa-IR") + " ترکیب دارای موجودی" : (Number.isInteger(product.stock) ? product.stock.toLocaleString("fa-IR") + " عدد کل" : "ثبت نشده")
@@ -149,6 +150,7 @@
     $("name").value = product.name || "";
     $("category").value = product.category || "";
     $("price").value = product.price ?? "";
+    $("cost-price").value = product.cost_price ?? "";
     $("stock").value = product.stock ?? "";
     $("sizes").value = (product.sizes || []).join(", ");
     $("colors").value = (product.colors || []).join(", ");
@@ -205,7 +207,7 @@
     }
     const product = {
       name: $("name").value.trim(), category: $("category").value.trim(),
-      price: $("price").value, stock: $("stock").value,
+      price: $("price").value, cost_price: $("cost-price").value, stock: $("stock").value,
       sizes: split($("sizes").value), colors: split($("colors").value),
       stock_by_variant: variantMode ? stockByVariant : null,
       description: $("description").value.trim(), tags: split($("tags").value)

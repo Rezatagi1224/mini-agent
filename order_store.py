@@ -141,6 +141,9 @@ def create_order(*, customer_name, phone, address, product, size, color, quantit
         "inventory_deducted": False,
         "payment_status": "unpaid",
     }
+    cost_price = product.get("cost_price")
+    if isinstance(cost_price, int) and not isinstance(cost_price, bool) and cost_price >= 0:
+        order["unit_cost"] = cost_price
     orders = load_orders()
     orders.insert(0, order)
     save_orders(orders)

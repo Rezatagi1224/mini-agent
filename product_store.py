@@ -53,6 +53,19 @@ def normalize_product(payload, existing=None):
     if price < 0:
         raise ValueError("قیمت نمی‌تواند منفی باشد.")
 
+    cost_value = payload.get("cost_price", "")
+    if cost_value not in (None, ""):
+        try:
+            cost_price = int(str(cost_value).replace(",", "").strip())
+        except (TypeError, ValueError):
+            raise ValueError("بهای خرید باید عدد صحیح به تومان باشد یا خالی بماند.")
+        if cost_price < 0:
+            raise ValueError("بهای خرید نمی‌تواند منفی باشد.")
+    elif "cost_price" not in payload and existing and isinstance(existing.get("cost_price"), int):
+        cost_price = existing["cost_price"]
+    else:
+        cost_price = None
+
     def list_field(key):
         value = payload.get(key, [])
         if isinstance(value, str):
@@ -75,6 +88,9 @@ def normalize_product(payload, existing=None):
         "colors": colors,
         "tags": list_field("tags"),
     }
+
+    if cost_price is not None:
+        product["cost_price"] = cost_price
 
     stock_value = payload.get("stock")
     if stock_value not in (None, ""):
