@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 from products import PRODUCTS as DEFAULT_PRODUCTS
-from store_context import resolve_data_file
+from store_context import current_store_id, resolve_data_file
 
 
 DATA_FILE = Path("/data/products.json")
@@ -21,7 +21,8 @@ def _copy_products(items):
 def load_products():
     """Load the persistent catalog; use seed data only before the first save."""
     if not _data_file().exists():
-        return _copy_products(DEFAULT_PRODUCTS)
+        # Seed only the legacy/default store; new stores must start empty.
+        return _copy_products(DEFAULT_PRODUCTS) if current_store_id() == "default" else []
     try:
         data = json.loads(_data_file().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
