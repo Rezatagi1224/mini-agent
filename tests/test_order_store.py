@@ -56,6 +56,12 @@ class OrderStoreSafetyTests(unittest.TestCase):
         self.assertFalse(order["inventory_deducted"])
         self.assertEqual(self.read_products()[0]["stock_by_variant"]["مشکی|L"], 3)
 
+    def test_order_snapshots_unit_cost_for_historical_profit(self):
+        self.product["cost_price"] = 200000
+        order = self.make_order(quantity=2)
+        self.assertEqual(order["unit_cost"], 200000)
+        self.assertEqual(order["total_price"], 1000000)
+
     def test_confirmation_deducts_variant_stock_once(self):
         order = self.make_order(quantity=2)
         updated = order_store.update_order_status(order["id"], "confirmed")
