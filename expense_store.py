@@ -4,14 +4,20 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from store_context import resolve_data_file
+
 DATA_FILE = Path("/data/expenses.json")
 
 
+def _data_file():
+    return resolve_data_file("expenses.json", DATA_FILE)
+
+
 def load_expenses():
-    if not DATA_FILE.exists():
+    if not _data_file().exists():
         return []
     try:
-        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        data = json.loads(_data_file().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         # Do not report a broken expense ledger as zero expenses.
         raise RuntimeError("فهرست هزینه‌ها قابل خواندن نیست؛ فایل داده را بررسی کن.") from exc
@@ -21,10 +27,10 @@ def load_expenses():
 
 
 def _save_expenses(expenses):
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = DATA_FILE.with_suffix(".tmp")
+    _data_file().parent.mkdir(parents=True, exist_ok=True)
+    temporary = _data_file().with_suffix(".tmp")
     temporary.write_text(json.dumps(expenses, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(DATA_FILE)
+    temporary.replace(_data_file())
 
 
 def create_expense(payload):
