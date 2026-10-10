@@ -30,6 +30,10 @@ class StoreContextTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate_store_id(value)
 
+    def test_fresh_store_starts_with_empty_catalog(self):
+        with use_store("freshshop"):
+            self.assertEqual(product_store.load_products(), [])
+
     def test_product_catalogs_are_isolated_between_stores(self):
         with use_store("alpha"):
             product_store.save_products([{"id": "alpha-item", "name": "Alpha"}])
