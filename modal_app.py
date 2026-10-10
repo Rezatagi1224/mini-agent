@@ -7,7 +7,7 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics", "customer_analytics")
+    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "expense_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics", "customer_analytics")
     .add_local_dir("frontend", "/root/frontend")
 )
 
@@ -31,6 +31,7 @@ def web():
     from product_store import load_products, save_products, normalize_product
     from order_store import load_orders, update_order_status, update_order_payment_status
     from dashboard_analytics import build_dashboard
+    from expense_store import load_expenses, create_expense, delete_expense
     from customer_analytics import build_customer_directory
     from message_service import handle_customer_message
     from conversation_store import (
@@ -297,11 +298,38 @@ def web():
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    @web_app.get("/admin/expenses")
+    async def get_expenses(request: Request):
+        require_admin(request)
+        product_volume.reload()
+        return {"expenses": load_expenses()}
+
+    @web_app.post("/admin/expenses")
+    async def add_expense(request: Request):
+        require_admin(request)
+        product_volume.reload()
+        try:
+            payload = await request.json()
+            expense = create_expense(payload)
+            commit_volume()
+            return {"expense": expense}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @web_app.delete("/admin/expenses/{expense_id}")
+    async def remove_expense(expense_id: str, request: Request):
+        require_admin(request)
+        product_volume.reload()
+        if not delete_expense(expense_id):
+            raise HTTPException(status_code=404, detail="هزینه پیدا نشد.")
+        commit_volume()
+        return {"ok": True}
+
     @web_app.get("/admin/dashboard")
     async def dashboard(request: Request):
         require_admin(request)
         product_volume.reload()
-        return build_dashboard(load_orders(), load_products())
+        return build_dashboard(load_orders(), load_products(), expenses=load_expenses())
 
     @web_app.get("/admin/customers")
     async def customers(request: Request):
