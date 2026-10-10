@@ -30,13 +30,14 @@
 <div class="wrap">
   <header>
     <div><h1>مدیریت محصولات</h1><p>محصولات ثبت‌شده در کاتالوگ عامل فروش</p></div>
-    <div class="top-actions"><button class="secondary" onclick="location.href='/admin/dashboard-page'">داشبورد فروش</button><button class="secondary" onclick="location.href='/admin/orders-page'">مدیریت سفارش‌ها</button><button class="secondary" onclick="location.href='/admin/customers-page'">مدیریت مشتریان</button><button class="secondary" id="refresh">به‌روزرسانی</button><button class="secondary" onclick="location.href='/'">رفتن به چت</button></div>
+    <div class="top-actions"><button class="secondary" onclick="location.href='/admin/stores-page'">مدیریت فروشگاه‌ها</button><button class="secondary" onclick="location.href='/admin/dashboard-page'">داشبورد فروش</button><button class="secondary" onclick="location.href='/admin/orders-page'">مدیریت سفارش‌ها</button><button class="secondary" onclick="location.href='/admin/customers-page'">مدیریت مشتریان</button><button class="secondary" id="refresh">به‌روزرسانی</button><button class="secondary" onclick="location.href='/'">رفتن به چت</button></div>
   </header>
 
   <section class="panel" id="login-panel">
     <h2>ورود مدیر</h2>
     <p style="margin:8px 0 14px">رمز مدیریتی که در تنظیمات Secret در Modal ثبت شده را وارد کن.</p>
-    <div class="grid"><div class="wide"><label for="password">رمز مدیریت</label><input id="password" type="password" autocomplete="current-password"></div></div>
+    <div class="grid"><div><label for="store-id">شناسه فروشگاه</label><input id="store-id" value="default" autocomplete="organization" placeholder="default یا شناسه فروشگاه"></div><div><label for="password">رمز مدیریت</label><input id="password" type="password" autocomplete="current-password"></div></div>
+    <p class="hint">مدیر اصلی می‌تواند شناسه هر فروشگاه فعال را انتخاب کند؛ مدیر فروشگاه باید شناسه اختصاصی خودش را وارد کند.</p>
     <div class="actions"><button id="login">ورود و بارگذاری محصولات</button></div>
     <div class="status" id="login-status" role="status"></div>
   </section>
@@ -178,7 +179,7 @@
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: $("password").value })
+        body: JSON.stringify({ store_id: $("store-id").value.trim() || "default", password: $("password").value })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || "ورود ناموفق بود.");

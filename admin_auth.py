@@ -17,19 +17,105 @@ def verify_admin_password(supplied: object, expected: object) -> bool:
     return hmac.compare_digest(supplied, expected)
 
 
-def create_admin_session_token(password: str, *, now: float | None = None) -> str:
-    """Create a signed token expiring after eight hours."""
-    if not isinstance(password, str) or not password:
-        raise ValueError("An admin password must be configured.")
-    issued_at = time.time() if now is None else now
-    expires_at = int(issued_at + ADMIN_SESSION_TTL_SECONDS)
-    payload = str(expires_at)
-    signature = hmac.new(
-        password.encode("utf-8"),
-        _SESSION_CONTEXT + payload.encode("ascii"),
+def _valid_expiry(expires_at: int, current_time: float) -> bool:
+    return (
+        expires_at > int(current_time)
+        and expires_at <= int(current_time) + ADMIN_SESSION_TTL_SECONDS + 1
+    )
+
+
+def _verify_v2_session(token: object, signing_secret: object, *, now: float | None = None):
+    if not isinstance(token, str) or not isinstance(signing_secret, str) or not signing_secret:
+        return None
+    parts = token.split(".")
+    if len(parts) != 6 or parts[0] != "v2":
+        return None
+    _, expiry_text, role, store_id, version_text, supplied_signature = parts
+    try:
+        expires_at = int(expiry_text)
+        credential_version = int(version_text)
+        from store_context import validate_store_id
+        validate_store_id(store_id)
+        if credential_version < 0:
+            return None
+    except (ValueError, TypeError):
+        return None
+    if role not in ("owner", "store_admin"):
+        return None
+    current_time = time.time() if now is None else now
+    if not _valid_expiry(expires_at, current_time):
+        return None
+    body = ".".join(parts[:5])
+    expected_signature = hmac.new(
+        signing_secret.encode("utf-8"),
+        _SESSION_CONTEXT + body.encode("ascii"),
         hashlib.sha256,
     ).hexdigest()
-    return f"{payload}.{signature}"
+    if not hmac.compare_digest(supplied_signature, expected_signature):
+        return None
+    return {"store_id": store_id, "role": role, "credential_version": credential_version, "expires_at": expires_at}
+
+
+def create_admin_session_token(
+    password: str,
+    *,
+    store_id: str = "default",
+    role: str = "owner",
+    credential_version: int = 0,
+    now: float | None = None,
+) -> str:
+    """Create a signed, short-lived token bound to a role and a single store."""
+    from store_context import validate_store_id
+
+    if not isinstance(password, str) or not password:
+        raise ValueError("An admin session signing secret must be configured.")
+    validate_store_id(store_id)
+    if role not in ("owner", "store_admin"):
+        raise ValueError("Invalid administrator role.")
+    if isinstance(credential_version, bool) or not isinstance(credential_version, int) or credential_version < 0:
+        raise ValueError("Invalid credential version.")
+    issued_at = time.time() if now is None else now
+    expires_at = int(issued_at + ADMIN_SESSION_TTL_SECONDS)
+    body = f"v2.{expires_at}.{role}.{store_id}.{credential_version}"
+    signature = hmac.new(
+        password.encode("utf-8"),
+        _SESSION_CONTEXT + body.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{body}.{signature}"
+
+
+def read_admin_session_token(
+    token: object,
+    signing_secret: object,
+    *,
+    now: float | None = None,
+) -> dict | None:
+    """Return trusted role/store claims for a valid token, otherwise None.
+
+    Legacy two-part tokens are accepted only as owner access to the default store
+    so existing signed-in sessions continue to work until they expire.
+    """
+    session = _verify_v2_session(token, signing_secret, now=now)
+    if session is not None:
+        return session
+    if not isinstance(token, str) or not isinstance(signing_secret, str) or not signing_secret:
+        return None
+    try:
+        expiry_text, supplied_signature = token.split(".", 1)
+        expires_at = int(expiry_text)
+    except (ValueError, TypeError):
+        return None
+    if not _valid_expiry(expires_at, time.time() if now is None else now):
+        return None
+    expected_signature = hmac.new(
+        signing_secret.encode("utf-8"),
+        _SESSION_CONTEXT + expiry_text.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    if hmac.compare_digest(supplied_signature, expected_signature):
+        return {"store_id": "default", "role": "owner", "credential_version": 0, "expires_at": expires_at}
+    return None
 
 
 def verify_admin_session_token(
@@ -38,28 +124,8 @@ def verify_admin_session_token(
     *,
     now: float | None = None,
 ) -> bool:
-    """Verify token integrity, expiration, and the current configured password."""
-    if not isinstance(token, str) or not token or not isinstance(expected_password, str):
-        return False
-    if not expected_password:
-        return False
-    try:
-        expiry_text, supplied_signature = token.split(".", 1)
-        expires_at = int(expiry_text)
-    except (ValueError, TypeError):
-        return False
-    current_time = time.time() if now is None else now
-    if expires_at <= int(current_time):
-        return False
-    if expires_at > int(current_time) + ADMIN_SESSION_TTL_SECONDS + 1:
-        return False
-    expected_signature = hmac.new(
-        expected_password.encode("utf-8"),
-        _SESSION_CONTEXT + expiry_text.encode("ascii"),
-        hashlib.sha256,
-    ).hexdigest()
-    return hmac.compare_digest(supplied_signature, expected_signature)
-
+    """Verify session integrity, expiration, and the current signing secret."""
+    return read_admin_session_token(token, expected_password, now=now) is not None
 
 
 class AdminLoginRateLimiter:

@@ -4,9 +4,14 @@ from pathlib import Path
 
 
 from products import PRODUCTS as DEFAULT_PRODUCTS
+from store_context import current_store_id, resolve_data_file
 
 
 DATA_FILE = Path("/data/products.json")
+
+
+def _data_file():
+    return resolve_data_file("products.json", DATA_FILE)
 
 
 def _copy_products(items):
@@ -15,10 +20,11 @@ def _copy_products(items):
 
 def load_products():
     """Load the persistent catalog; use seed data only before the first save."""
-    if not DATA_FILE.exists():
-        return _copy_products(DEFAULT_PRODUCTS)
+    if not _data_file().exists():
+        # Seed only the legacy/default store; new stores must start empty.
+        return _copy_products(DEFAULT_PRODUCTS) if current_store_id() == "default" else []
     try:
-        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        data = json.loads(_data_file().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         # Falling back to seed data here could silently replace a real catalog
         # when an admin saves the next edit.
@@ -32,13 +38,13 @@ def save_products(products):
     """Validate the catalog shape, persist it, and commit the Modal Volume."""
     if not isinstance(products, list) or any(not isinstance(p, dict) for p in products):
         raise ValueError("کاتالوگ باید یک فهرست از محصولات باشد.")
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = DATA_FILE.with_suffix(".tmp")
+    _data_file().parent.mkdir(parents=True, exist_ok=True)
+    temporary = _data_file().with_suffix(".tmp")
     temporary.write_text(
         json.dumps(products, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    temporary.replace(DATA_FILE)
+    temporary.replace(_data_file())
 
 
 def normalize_product(payload, existing=None):

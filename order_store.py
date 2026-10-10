@@ -6,8 +6,18 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from store_context import resolve_data_file
+
 DATA_FILE = Path("/data/orders.json")
 PRODUCTS_FILE = Path("/data/products.json")
+
+
+def _orders_file():
+    return resolve_data_file("orders.json", DATA_FILE)
+
+
+def _products_file():
+    return resolve_data_file("products.json", PRODUCTS_FILE)
 PHONE_RE = re.compile(r"^[+0-9()\-\s]{8,24}$")
 STATUSES = {
     "pending": "در انتظار تأیید",
@@ -31,10 +41,10 @@ def _variant_key(stock_map, color, size):
 
 
 def load_orders():
-    if not DATA_FILE.exists():
+    if not _orders_file().exists():
         return []
     try:
-        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        data = json.loads(_orders_file().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         # Never treat damaged/unreadable order history as an empty store:
         # a subsequent write could otherwise overwrite the real order ledger.
@@ -47,17 +57,17 @@ def load_orders():
 def save_orders(orders):
     if not isinstance(orders, list) or any(not isinstance(item, dict) for item in orders):
         raise ValueError("فهرست سفارش‌ها نامعتبر است.")
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = DATA_FILE.with_suffix(".tmp")
+    _orders_file().parent.mkdir(parents=True, exist_ok=True)
+    temporary = _orders_file().with_suffix(".tmp")
     temporary.write_text(json.dumps(orders, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(DATA_FILE)
+    temporary.replace(_orders_file())
 
 
 def _load_products_file():
-    if not PRODUCTS_FILE.exists():
+    if not _products_file().exists():
         return []
     try:
-        data = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
+        data = json.loads(_products_file().read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         # Do not treat a broken catalog as empty: a status change could then
         # proceed without validating the inventory file.
@@ -68,10 +78,10 @@ def _load_products_file():
 
 
 def _save_products_file(products):
-    PRODUCTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = PRODUCTS_FILE.with_suffix(".tmp")
+    _products_file().parent.mkdir(parents=True, exist_ok=True)
+    temporary = _products_file().with_suffix(".tmp")
     temporary.write_text(json.dumps(products, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(PRODUCTS_FILE)
+    temporary.replace(_products_file())
 
 
 def create_order(*, customer_name, phone, address, product, size, color, quantity):
