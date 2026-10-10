@@ -106,6 +106,23 @@ class OrderStoreSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "تغییر وضعیت مجاز نیست"):
             order_store.update_order_status(order["id"], "confirmed")
 
+    def test_payment_status_is_tracked_and_validated(self):
+        order = self.make_order(quantity=1)
+        with self.assertRaisesRegex(ValueError, "فقط برای سفارش تأییدشده"):
+            order_store.update_order_payment_status(order["id"], "paid")
+        order_store.update_order_status(order["id"], "confirmed")
+        paid = order_store.update_order_payment_status(order["id"], "paid")
+        self.assertEqual(paid["payment_status"], "paid")
+        self.assertEqual(paid["payment_status_label"], "پرداخت‌شده")
+        order_store.update_order_status(order["id"], "cancelled")
+        refunded = order_store.update_order_payment_status(order["id"], "refunded")
+        self.assertEqual(refunded["payment_status"], "refunded")
+
+    def test_refund_requires_cancelled_paid_order(self):
+        order = self.make_order(quantity=1)
+        with self.assertRaisesRegex(ValueError, "ابتدا پرداخت"):
+            order_store.update_order_payment_status(order["id"], "refunded")
+
     def test_invalid_contact_and_quantity_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "شماره تماس معتبر نیست"):
             order_store.create_order(
