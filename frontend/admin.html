@@ -73,7 +73,6 @@
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  let password = sessionStorage.getItem("mini_agent_admin_password") || "";
   let products = [];
   let editingId = null;
   let editingStockMap = {};
@@ -84,7 +83,8 @@
   async function api(path, options = {}) {
     const response = await fetch(path, {
       ...options,
-      headers: { "Content-Type": "application/json", "X-Admin-Password": password, ...(options.headers || {}) }
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) }
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || "درخواست ناموفق بود.");
@@ -171,15 +171,35 @@
   }
 
   $("login").addEventListener("click", async () => {
-    password = $("password").value;
-    await loadCatalog();
-    if (!$("editor-panel").hidden) sessionStorage.setItem("mini_agent_admin_password", password);
+    $("login").disabled = true;
+    setStatus("login-status", "در حال بررسی رمز مدیریت...");
+    try {
+      const response = await fetch("/admin/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: $("password").value })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "ورود ناموفق بود.");
+      await loadCatalog();
+    } catch (error) {
+      setStatus("login-status", error.message);
+    } finally {
+      $("login").disabled = false;
+    }
   });
   $("password").addEventListener("keydown", event => { if (event.key === "Enter") $("login").click(); });
   $("refresh").addEventListener("click", async () => {
-    if (!password) { $("login-panel").hidden = false; return; }
-    try { const data = await api("/admin/products"); products = data.products || []; render(); setStatus("catalog-status", "کاتالوگ به‌روز شد."); }
-    catch (error) { setStatus("catalog-status", error.message); }
+    try {
+      const data = await api("/admin/products");
+      products = data.products || [];
+      render();
+      setStatus("catalog-status", "کاتالوگ به‌روز شد.");
+    } catch (error) {
+      setStatus("catalog-status", error.message);
+      $("login-panel").hidden = false;
+    }
   });
   async function loadCatalog() {
     setStatus("login-status", "در حال دریافت کاتالوگ...");
@@ -233,12 +253,20 @@
     } catch (error) { setStatus("catalog-status", error.message); }
   }
   $("cancel").addEventListener("click", resetForm);
-  $("logout").addEventListener("click", () => {
-    password = ""; sessionStorage.removeItem("mini_agent_admin_password");
-    $("password").value = ""; $("editor-panel").hidden = true; $("catalog-panel").hidden = true; $("login-panel").hidden = false; resetForm();
+  $("logout").addEventListener("click", async () => {
+    try {
+      await fetch("/admin/logout", { method: "POST", credentials: "same-origin" });
+    } finally {
+      $("password").value = "";
+      $("editor-panel").hidden = true;
+      $("catalog-panel").hidden = true;
+      $("login-panel").hidden = false;
+      setStatus("login-status", "از پنل خارج شدی.");
+      resetForm();
+    }
   });
   resetForm();
-  if (password) { $("password").value = password; loadCatalog(); }
+  loadCatalog();
 })();
 </script>
 </body>

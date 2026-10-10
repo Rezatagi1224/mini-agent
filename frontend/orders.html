@@ -16,13 +16,12 @@
 <script>
 (() => {
  const $=id=>document.getElementById(id);
- let password=sessionStorage.getItem("mini_agent_admin_password")||"";
  let orders=[];
  const money=v=>Number(v||0).toLocaleString("fa-IR")+" تومان";
  const statuses=[["pending","در انتظار تأیید"],["confirmed","تأیید شده"],["shipped","ارسال شده"],["cancelled","لغو شده"]];
  function show(id,msg){$(id).textContent=msg}
- async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{"Content-Type":"application/json","X-Admin-Password":password,...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"درخواست ناموفق بود.");return d}
- async function load(){try{const d=await api("/admin/orders");orders=d.orders||[];$("login-panel").classList.add("hidden");$("orders-panel").classList.remove("hidden");render();show("login-status","")}catch(e){show("login-status",e.message)}}
+ async function api(path,opts={}){const r=await fetch(path,{...opts,credentials:"same-origin",headers:{"Content-Type":"application/json",...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"درخواست ناموفق بود.");return d}
+ async function load(){try{const d=await api("/admin/orders");orders=d.orders||[];$("login-panel").classList.add("hidden");$("orders-panel").classList.remove("hidden");render();show("login-status","")}catch(e){$("login-panel").classList.remove("hidden");$("orders-panel").classList.add("hidden");show("login-status",e.message)}}
  function render(){const tbody=$("orders");tbody.replaceChildren();if(!orders.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=7;td.textContent="هنوز سفارشی ثبت نشده است.";tr.appendChild(td);tbody.appendChild(tr);return}
   for(const o of orders){const tr=document.createElement("tr");const values=[
    o.id+"\n"+new Date(o.created_at).toLocaleString("fa-IR"),
@@ -40,9 +39,18 @@
  }
  async function update(id,status,btn){btn.disabled=true;try{await api("/admin/orders/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});await load();show("orders-status","وضعیت سفارش به‌روزرسانی شد.")}catch(e){show("orders-status",e.message)}finally{btn.disabled=false}}
  async function updatePayment(id,payment_status,btn){btn.disabled=true;try{await api("/admin/orders/"+encodeURIComponent(id)+"/payment",{method:"PATCH",body:JSON.stringify({payment_status})});await load();show("orders-status","وضعیت پرداخت به‌روزرسانی شد.")}catch(e){show("orders-status",e.message)}finally{btn.disabled=false}}
- $("login").addEventListener("click",async()=>{password=$("password").value;await load();if(!$("orders-panel").classList.contains("hidden"))sessionStorage.setItem("mini_agent_admin_password",password)});
+ $("login").addEventListener("click",async()=>{
+  $("login").disabled=true;
+  try{
+   const r=await fetch("/admin/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("password").value})});
+   const d=await r.json().catch(()=>({}));
+   if(!r.ok)throw new Error(d.detail||"ورود ناموفق بود.");
+   await load();
+  }catch(e){show("login-status",e.message)}
+  finally{$("login").disabled=false}
+ });
  $("password").addEventListener("keydown",e=>{if(e.key==="Enter")$("login").click()});
- $("refresh").addEventListener("click",async()=>{if(!password){$("login-panel").classList.remove("hidden");return}try{await load();show("orders-status","سفارش‌ها به‌روز شدند.")}catch(e){show("orders-status",e.message)}});
- if(password){$("password").value=password;load()}
+ $("refresh").addEventListener("click",()=>load());
+ load();
 })();
 </script></body></html>

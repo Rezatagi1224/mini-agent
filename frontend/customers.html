@@ -52,13 +52,12 @@ th{color:#64748b}.status{white-space:pre-wrap;margin-top:10px;font-size:14px}.mu
 <script>
 (() => {
  const $ = id => document.getElementById(id);
- let password = sessionStorage.getItem("mini_agent_admin_password") || "";
  let customers = [];
  const money = value => Number(value || 0).toLocaleString("fa-IR") + " تومان";
  const statuses = {pending:"در انتظار تأیید",confirmed:"تأیید شده",shipped:"ارسال شده",cancelled:"لغو شده"};
  const date = value => { const d = new Date(value); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("fa-IR"); };
  async function api(){
-  const response = await fetch("/admin/customers", {headers:{"X-Admin-Password":password}});
+  const response = await fetch("/admin/customers", {credentials:"same-origin"});
   const data = await response.json().catch(()=>({}));
   if(!response.ok) throw new Error(data.detail || "دریافت فهرست مشتریان ناموفق بود.");
   return data;
@@ -83,10 +82,19 @@ th{color:#64748b}.status{white-space:pre-wrap;margin-top:10px;font-size:14px}.mu
    body.appendChild(tr);
   }
  }
- async function load(){
+ async function load(loginPassword = null){
   $("login-status").textContent="در حال دریافت اطلاعات...";
   $("login").disabled=true;
   try{
+   if (typeof loginPassword === "string") {
+    const loginResponse = await fetch("/admin/login", {
+     method:"POST", credentials:"same-origin",
+     headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({password:loginPassword})
+    });
+    const loginData = await loginResponse.json().catch(()=>({}));
+    if(!loginResponse.ok) throw new Error(loginData.detail || "ورود ناموفق بود.");
+   }
    const data=await api(); customers=data.customers||[];
    const summary=data.summary||{};
    const metrics=[
@@ -102,17 +110,16 @@ th{color:#64748b}.status{white-space:pre-wrap;margin-top:10px;font-size:14px}.mu
     const v=document.createElement("div");v.className="value";v.textContent=value??0;
     card.append(l,v);$("metrics").appendChild(card);
    }
-   sessionStorage.setItem("mini_agent_admin_password",password);
    $("login-panel").hidden=true;$("customers-panel").hidden=false;$("login-status").textContent="";
    render();
   }catch(error){$("login-status").textContent=error.message;$("customers-panel").hidden=true;$("login-panel").hidden=false}
   finally{$("login").disabled=false}
  }
- $("login-form").addEventListener("submit",async event=>{event.preventDefault();password=$("password").value;await load()});
+ $("login-form").addEventListener("submit",async event=>{event.preventDefault();await load($("password").value)});
  $("password").addEventListener("keydown",event=>{if(event.key==="Enter")$("login-form").requestSubmit()});
  $("search").addEventListener("input",render);
- $("refresh").addEventListener("click",()=>{if(!password){$("login-panel").hidden=false;return}load()});
- if(password){$("password").value=password;load()}
+ $("refresh").addEventListener("click",()=>load());
+ load();
 })();
 </script>
 </body></html>
