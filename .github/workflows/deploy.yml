@@ -1,20 +1,35 @@
 name: Deploy Agent to Modal
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
 
 jobs:
-  deploy:
+  tests:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
       - name: Run tests
         run: python -m unittest discover -s tests -v
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v6
