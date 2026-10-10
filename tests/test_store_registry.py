@@ -46,11 +46,14 @@ class StoreRegistryTests(unittest.TestCase):
 
     def test_disabled_store_rejects_login_and_can_be_reenabled(self):
         store_registry.create_store("shop-a", "الف", "a-very-long-test-password")
+        initial_version = store_registry.get_store_auth_version("shop-a")
         store_registry.set_store_active("shop-a", False)
+        self.assertEqual(store_registry.get_store_auth_version("shop-a"), initial_version + 1)
         self.assertFalse(store_registry.is_store_active("shop-a"))
         self.assertFalse(store_registry.verify_store_password("shop-a", "a-very-long-test-password"))
         self.assertIsNone(store_registry.get_store("shop-a", include_inactive=False))
         store_registry.set_store_active("shop-a", True)
+        self.assertEqual(store_registry.get_store_auth_version("shop-a"), initial_version + 2)
         self.assertTrue(store_registry.is_store_active("shop-a"))
         self.assertTrue(store_registry.verify_store_password("shop-a", "a-very-long-test-password"))
 
