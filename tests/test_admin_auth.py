@@ -93,7 +93,7 @@ class AdminAuthTests(unittest.TestCase):
         from admin_auth import read_admin_session_token
         self.assertEqual(
             read_admin_session_token(token, "test-secret", now=now),
-            {"store_id": "shop-02", "role": "store_admin", "expires_at": now + ADMIN_SESSION_TTL_SECONDS},
+            {"store_id": "shop-02", "role": "store_admin", "credential_version": 0, "expires_at": now + ADMIN_SESSION_TTL_SECONDS},
         )
         self.assertFalse(verify_admin_session_token(token, "other-secret", now=now))
 
