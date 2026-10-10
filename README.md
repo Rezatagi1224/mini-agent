@@ -25,6 +25,7 @@ A Persian-language AI sales assistant for a clothing store, with catalog, invent
 ## Admin authentication
 
 - Set a long, unique `ADMIN_PASSWORD` in the Modal Secret named `openrouter-secret`. If it is missing, admin API access fails closed.
+- The login route permits five failed attempts per client key in a rolling 15-minute window and returns HTTP 429 with a `Retry-After` header after the threshold. The limiter is process-local defense-in-depth; it is not a globally coordinated rate limit across multiple Modal containers.
 - After a successful `POST /admin/login`, the server issues a signed session cookie that expires after eight hours. The cookie is `HttpOnly`, `Secure`, `SameSite=Strict`, and scoped to `/admin`.
 - The admin password is not saved in browser `sessionStorage` and is not sent with every admin API request. Logging out clears the cookie; changing `ADMIN_PASSWORD` invalidates existing sessions.
 - Admin pages are still served publicly, but product, order, expense, dashboard, and customer data APIs require a valid admin session. Keep the password private and use the app over HTTPS.
