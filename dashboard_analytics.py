@@ -86,7 +86,7 @@ def _inventory_report(products, low_stock_threshold=3):
     }
 
 
-def build_dashboard(orders, products, now=None, low_stock_threshold=3):
+def build_dashboard(orders, products, now=None, low_stock_threshold=3, expenses=None):
     """Build dashboard aggregates without returning customer contact details."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
@@ -108,6 +108,8 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
 
     confirmed_amount = 0
     cancelled_amount = 0
+    gross_profit_recorded = 0
+    orders_missing_cost = 0
     paid_amount = 0
     outstanding_amount = 0
     refunded_amount = 0
@@ -125,6 +127,11 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
             else:
                 outstanding_amount += amount
             sold_orders.append(order)
+            unit_cost = order.get("unit_cost")
+            if isinstance(unit_cost, (int, float)) and not isinstance(unit_cost, bool) and unit_cost >= 0:
+                gross_profit_recorded += amount - int(unit_cost) * quantity
+            else:
+                orders_missing_cost += 1
             name = str(order.get("product_name") or "محصول بدون نام")
             top[name] = top.get(name, 0) + quantity
             phone = normalize_phone_key(order.get("phone", ""))
@@ -145,6 +152,9 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
     settled = len(sold_orders) + len(cancelled_orders)
     cancellation_rate = round((len(cancelled_orders) / settled) * 100, 1) if settled else 0
     average_order_amount = round(confirmed_amount / len(sold_orders)) if sold_orders else 0
+    expenses = [item for item in (expenses or []) if isinstance(item, dict)]
+    recorded_expenses = sum(_integer(item.get("amount")) for item in expenses)
+    net_profit_recorded = gross_profit_recorded - recorded_expenses
 
     return {
         "orders": {
@@ -162,6 +172,11 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
             "last_7_days_amount": last_7_days_amount,
             "average_order_amount": average_order_amount,
             "cancellation_rate_percent": cancellation_rate,
+            "gross_profit_recorded": gross_profit_recorded,
+            "recorded_expenses": recorded_expenses,
+            "net_profit_recorded": net_profit_recorded,
+            "orders_missing_cost": orders_missing_cost,
+            "profit_complete": orders_missing_cost == 0,
         },
         "customers": {
             "repeat_customers": sum(count >= 2 for count in customer_completed_orders.values()),
