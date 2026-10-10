@@ -17,7 +17,7 @@ button,a.btn{cursor:pointer;background:#172033;color:white;text-decoration:none;
 a.secondary{background:#e9edf3;color:#18212f;border:0}.nav{display:flex;gap:8px;flex-wrap:wrap}
 input{width:min(100%,420px)}.status{margin-top:10px;white-space:pre-wrap}
 table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;border-bottom:1px solid #e8edf3;font-size:14px}
-.table-wrap{overflow-x:auto}.muted{color:#64748b;font-size:13px}
+.table-wrap{overflow-x:auto}.muted{color:#64748b;font-size:13px}.alert-list{padding:0 20px;margin:0}.alert-list li{padding:7px 0;border-bottom:1px solid #e8edf3}.empty{color:#64748b;padding:10px 0}
 @media(max-width:600px){body{padding:10px}h1{font-size:20px}.panel,.card{padding:13px}}
 </style>
 </head>
@@ -38,6 +38,8 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
 <section id="report-panel" hidden>
   <div class="grid" id="metrics"></div>
   <section class="panel"><h2>۵ محصول پرفروش</h2><div class="table-wrap"><table><thead><tr><th>محصول</th><th>تعداد فروخته‌شده</th></tr></thead><tbody id="top-products"></tbody></table></div></section>
+  <section class="panel"><h2>فروش روزانه — ۷ روز اخیر</h2><div class="table-wrap"><table><thead><tr><th>تاریخ (UTC)</th><th>تعداد سفارش فروش</th><th>مبلغ</th></tr></thead><tbody id="daily-sales"></tbody></table></div></section>
+  <section class="panel"><h2>هشدارهای موجودی</h2><p class="muted" id="inventory-summary"></p><ul class="alert-list" id="inventory-alerts"></ul></section>
   <p class="muted">مبلغ فروش بر اساس سفارش‌های تأییدشده محاسبه می‌شود؛ چون پرداخت آنلاین فعال نیست، این مبلغ لزوماً به معنی پول دریافت‌شده نیست.</p>
 </section>
 </main>
@@ -61,9 +63,16 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
       const metrics = [
         ["کل سفارش‌ها", data.orders.total],
         ["در انتظار تأیید", data.orders.pending],
-        ["تأییدشده و ارسال‌شده", data.orders.confirmed],
-        ["مبلغ فروش تأییدشده", money(data.sales.confirmed_amount)],
-        ["مبلغ سفارش‌های لغوشده", money(data.sales.cancelled_amount)]
+        ["تأییدشده", data.orders.confirmed],
+        ["ارسال‌شده", data.orders.shipped],
+        ["لغوشده", data.orders.cancelled],
+        ["فروش تأییدشده", money(data.sales.confirmed_amount)],
+        ["فروش ۷ روز اخیر", money(data.sales.last_7_days_amount)],
+        ["میانگین مبلغ سفارش تأییدشده", money(data.sales.average_order_amount)],
+        ["نرخ لغو سفارش‌های تعیین‌تکلیف‌شده", Number(data.sales.cancellation_rate_percent || 0).toLocaleString("fa-IR") + "٪"],
+        ["مشتریان با حداقل ۲ سفارش تکمیل‌شده", Number(data.customers.repeat_customers || 0).toLocaleString("fa-IR")],
+        ["تنوع ناموجود", Number(data.inventory.zero_variant_count || 0).toLocaleString("fa-IR")],
+        ["ترکیب‌های کم‌موجودی", Number(data.inventory.low_variant_count || 0).toLocaleString("fa-IR")]
       ];
       $("metrics").replaceChildren();
       for (const [label, value] of metrics) {
@@ -83,6 +92,30 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
           const name = document.createElement("td"); name.textContent = product.name || "محصول بدون نام";
           const quantity = document.createElement("td"); quantity.textContent = Number(product.quantity || 0).toLocaleString("fa-IR") + " عدد";
           tr.append(name, quantity); tbody.appendChild(tr);
+        }
+      }
+      const dailyBody = $("daily-sales");
+      dailyBody.replaceChildren();
+      for (const day of (data.daily_sales || [])) {
+        const tr = document.createElement("tr");
+        const date = document.createElement("td"); date.textContent = day.date || "—";
+        const count = document.createElement("td"); count.textContent = Number(day.orders || 0).toLocaleString("fa-IR");
+        const amount = document.createElement("td"); amount.textContent = money(day.amount);
+        tr.append(date, count, amount); dailyBody.appendChild(tr);
+      }
+      const inv = data.inventory || {};
+      $("inventory-summary").textContent =
+        "موجودی کل صفر: " + Number(inv.zero_product_count || 0).toLocaleString("fa-IR") +
+        " | موجودی کل کم: " + Number(inv.low_product_count || 0).toLocaleString("fa-IR") +
+        " | ترکیب‌های سایز/رنگ نامشخص: " + Number(inv.unverified_variant_count || 0).toLocaleString("fa-IR") +
+        " | آستانهٔ کم‌موجودی: " + Number(inv.low_stock_threshold || 3).toLocaleString("fa-IR") + " عدد";
+      const alerts = $("inventory-alerts"); alerts.replaceChildren();
+      if (!(inv.alerts || []).length) {
+        const li = document.createElement("li"); li.className = "empty"; li.textContent = "هشدار موجودی ثبت نشده است.";
+        alerts.appendChild(li);
+      } else {
+        for (const message of inv.alerts) {
+          const li = document.createElement("li"); li.textContent = message; alerts.appendChild(li);
         }
       }
       $("status").textContent = "";

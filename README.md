@@ -2,6 +2,12 @@
 
 A Persian-language AI sales assistant for a clothing store, with catalog, inventory, order review, and sales dashboard.
 
+## Sales dashboard analytics
+
+- Reports distinguish pending, confirmed, shipped, and cancelled orders.
+- Shows seven-day UTC sales, average completed order value, cancellation rate, repeat customers (count only), top products, and inventory alerts.
+- Inventory alerts distinguish zero, low, and unverified records; a default low-stock threshold of three is used.
+
 ## Inventory-safe recommendations
 
 - Exact size/color stock uses the recorded variant map.
