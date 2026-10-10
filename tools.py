@@ -125,7 +125,7 @@ def check_stock(product_name: str, size: str = "", color: str = "") -> str:
 
 @function_tool
 def recommend_products(occasion: str = "", budget: float = 0, size: str = "", style: str = "", color: str = "") -> str:
-    """Recommend products with soft relevance ranking and strict size/color/budget constraints.
+    """Recommend products with relevance ranking and strict size/color/budget constraints.
 
     Args:
         occasion: Occasion, such as everyday, work, or party.
@@ -152,7 +152,7 @@ def recommend_products(occasion: str = "", budget: float = 0, size: str = "", st
     for product in products:
         if not isinstance(product, dict):
             continue
-        # Size, color, and budget are hard constraints; style and occasion
+        # Size, color, and budget are hard constraints. Style and occasion
         # are ranking signals because catalog descriptions may use synonyms.
         if size and not any(_normalize(size) == _normalize(s) for s in product.get("sizes", [])):
             continue
