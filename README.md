@@ -44,12 +44,28 @@ Then configure the callback URL `https://davoudtaghizade--mini-agent-web.modal.r
 The integration remains inactive until the Meta app, permissions, callback verification, and Modal secrets are configured. The API's send/receive requirements are documented in [Meta's Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
 
 
-## Store data isolation groundwork
+## Multi-store operation
 
-- Product catalogs, order ledgers, inventory files, and expense ledgers resolve paths using an async-context-local store identifier.
-- The existing `default` store continues to use the legacy `/data/*.json` files, preserving current production data.
-- Named stores use `/data/stores/<store_id>/*.json`; new stores start with an empty catalog rather than copying the default store's seed catalog.
-- This is storage-layer groundwork only. Store-specific administrator identity, owner permissions, store selection, and channel-to-store routing must be completed before multi-store operation is enabled.
+- The `default` store continues using the existing `/data/*.json` files, so the current catalog, orders, inventory, and expenses are not migrated or overwritten. Named stores use isolated files under `/data/stores/<store_id>/` and start with an empty catalog.
+- Sign in at `/admin` with the configured `ADMIN_PASSWORD` and store ID `default`. Open **مدیریت فروشگاه‌ها** to create named stores. Each store gets its own administrator password (minimum 12 characters); the registry stores salted PBKDF2-HMAC-SHA256 hashes, not raw passwords.
+- Store administrators sign in with their store ID and their own password. Their signed session is bound to that store and the `store_admin` role. They cannot call owner-only store-management APIs. The owner can choose any registered store at login, reset store-admin passwords, or deactivate/reactivate a store without deleting its data.
+- A public store is available at `/s/<store_id>`. For example, if the store ID is `shop-02`, share `https://davoudtaghizade--mini-agent-web.modal.run/s/shop-02`. Unknown or disabled store IDs return not found. Web conversation histories are keyed by store so they are not shared across shops.
+- Store IDs must be lowercase ASCII letters/digits, hyphens, or underscores, must start with a letter/digit, and are at most 64 characters. The reserved ID `default` cannot be created as a named store. Store-admin passwords must contain at least 12 characters.
+- The registry is persisted in `/data/stores/registry.json`; do not manually edit it while the service is running. Deactivation blocks store-admin login and the public storefront but retains tenant data. The master `ADMIN_PASSWORD` remains the authority for owner access and signs the admin-session claims.
+- The existing session cookie remains HTTP-only, Secure, SameSite=Strict and eight hours long. Failed-login throttling remains a process-local defense-in-depth limiter, not a globally coordinated rate limit across Modal containers.
+
+### Multiple Instagram accounts
+
+The existing single-account variables (`INSTAGRAM_BUSINESS_ACCOUNT_ID` and `INSTAGRAM_ACCESS_TOKEN`) continue to route that account to the `default` store. To route multiple Instagram professional accounts to separate stores, set `INSTAGRAM_ACCOUNTS_JSON` in the Modal Secret named `openrouter-secret`, using a JSON object keyed by each Instagram business account ID. Each value requires `store_id` and may include an account-specific `access_token`; if omitted, the global `INSTAGRAM_ACCESS_TOKEN` is used. Example structure (use real IDs/tokens only in the Modal Secret, never in Git):
+
+```json
+{
+  "INSTAGRAM_ACCOUNT_ID_1": {"store_id": "default", "access_token": "ACCESS_TOKEN_1"},
+  "INSTAGRAM_ACCOUNT_ID_2": {"store_id": "shop-02", "access_token": "ACCESS_TOKEN_2"}
+}
+```
+
+All accounts can use the shared Meta webhook callback, app secret, and verification token when configured in the same Meta app. The account ID from each inbound webhook determines the target store; an unknown account is ignored rather than routed into the default store. Add the store through the owner UI before mapping its Instagram account.
 
 ## Purchase costs and manual expenses
 
