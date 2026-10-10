@@ -3,24 +3,16 @@
 
 <head>
     <meta charset="UTF-8">
-
     <meta
         name="viewport"
         content="width=device-width, initial-scale=1.0"
     >
-
     <title>Mini Agent</title>
-
-    <link
-        rel="stylesheet"
-        href="/style.css"
-    >
+    <link rel="stylesheet" href="/style.css">
 </head>
 
 <body>
-
     <div class="app">
-
         <header class="header">
             <div>
                 <h1>Mini Agent</h1>
@@ -28,46 +20,33 @@
             </div>
         </header>
 
-
-        <main
-            id="chat"
-            class="chat"
-        >
-
+        <main id="chat" class="chat">
             <div class="message assistant">
                 سلام 👋
                 <br>
                 من آماده‌ام. چه کاری برات انجام بدم؟
             </div>
-
         </main>
-
 
         <form
             id="chat-form"
             class="input-area"
+            action="/"
+            method="get"
+            onsubmit="event.preventDefault()"
         >
-
             <input
                 id="message-input"
                 type="text"
                 placeholder="پیامت را بنویس..."
                 autocomplete="off"
             >
-
-            <button
-                id="send-button"
-                type="submit"
-            >
+            <button id="send-button" type="submit">
                 ارسال
             </button>
-
         </form>
-
     </div>
 
-    <script src="/app.js"></script>
-
+    <script src="/app.js?v=20261010-1"></script>
 </body>
-
 </html>
