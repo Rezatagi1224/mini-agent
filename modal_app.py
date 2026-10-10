@@ -29,7 +29,7 @@ def web():
     from uuid import UUID
     import asyncio
     from product_store import load_products, save_products, normalize_product
-    from order_store import load_orders, update_order_status
+    from order_store import load_orders, update_order_status, update_order_payment_status
     from dashboard_analytics import build_dashboard
     from customer_analytics import build_customer_directory
     from message_service import handle_customer_message
@@ -275,6 +275,21 @@ def web():
             payload = await request.json()
             status = payload.get("status") if isinstance(payload, dict) else None
             order = update_order_status(order_id, status)
+            if order is None:
+                raise HTTPException(status_code=404, detail="سفارش پیدا نشد.")
+            commit_volume()
+            return {"order": order}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @web_app.patch("/admin/orders/{order_id}/payment")
+    async def change_order_payment_status(order_id: str, request: Request):
+        require_admin(request)
+        product_volume.reload()
+        try:
+            payload = await request.json()
+            payment_status = payload.get("payment_status") if isinstance(payload, dict) else None
+            order = update_order_payment_status(order_id, payment_status)
             if order is None:
                 raise HTTPException(status_code=404, detail="سفارش پیدا نشد.")
             commit_volume()
