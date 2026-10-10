@@ -293,7 +293,6 @@ def web():
         product_volume.reload()
         import re
         import unicodedata
-        from datetime import datetime
 
         grouped = {}
         orders = load_orders()
