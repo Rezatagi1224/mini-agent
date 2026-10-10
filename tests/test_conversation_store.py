@@ -50,6 +50,22 @@ class ConversationStoreTests(unittest.TestCase):
         self.assertEqual(conversation_store.load_history(conversation_id), [])
         self.assertFalse(path.exists())
 
+    def test_message_ledger_prevents_duplicate_processing(self):
+        conversation_id = "instagram:sender-1"
+        self.assertTrue(conversation_store.claim_message(conversation_id, "mid-1"))
+        self.assertEqual(conversation_store.message_state(conversation_id, "mid-1"), "processing")
+        self.assertFalse(conversation_store.claim_message(conversation_id, "mid-1"))
+        conversation_store.mark_message_processed(conversation_id, "mid-1")
+        self.assertEqual(conversation_store.message_state(conversation_id, "mid-1"), "done")
+        self.assertFalse(conversation_store.claim_message(conversation_id, "mid-1"))
+
+    def test_failed_message_can_be_retried(self):
+        conversation_id = "instagram:sender-2"
+        self.assertTrue(conversation_store.claim_message(conversation_id, "mid-2"))
+        conversation_store.release_message(conversation_id, "mid-2")
+        self.assertEqual(conversation_store.message_state(conversation_id, "mid-2"), "new")
+        self.assertTrue(conversation_store.claim_message(conversation_id, "mid-2"))
+
     def test_prune_expired_removes_stale_files_and_keeps_recent_ones(self):
         conversation_store.save_history("web:active", [{"role": "user", "content": "recent"}])
         stale = conversation_store._file_for("web:stale")

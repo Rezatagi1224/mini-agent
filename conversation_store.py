@@ -97,13 +97,124 @@ def save_history(conversation_id, history, now=None):
     return clean
 
 
+MAX_SEEN_MESSAGE_IDS = 200
+PROCESSING_LEASE = timedelta(minutes=3)
+
+
+def _seen_file_for(conversation_id):
+    return _file_for(conversation_id).with_suffix(".seen")
+
+
+def _load_seen_record(path, now=None):
+    if not path.exists():
+        return {"updated_at": _now(now).isoformat(timespec="seconds"), "messages": {}}
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        path.unlink(missing_ok=True)
+        return {"updated_at": _now(now).isoformat(timespec="seconds"), "messages": {}}
+    if not isinstance(record, dict) or _is_expired(record, now=now):
+        path.unlink(missing_ok=True)
+        return {"updated_at": _now(now).isoformat(timespec="seconds"), "messages": {}}
+    messages = record.get("messages")
+    if not isinstance(messages, dict):
+        messages = {}
+    record["messages"] = messages
+    return record
+
+
+def _write_seen_record(path, record, now=None):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record["updated_at"] = _now(now).isoformat(timespec="seconds")
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def message_state(conversation_id, message_id, now=None):
+    """Return new, processing, or done for an incoming platform message."""
+    if not isinstance(message_id, str) or not message_id or len(message_id) > 500:
+        return "new"
+    record = _load_seen_record(_seen_file_for(conversation_id), now=now)
+    item = record["messages"].get(message_id)
+    if not isinstance(item, dict):
+        return "new"
+    if item.get("status") == "done":
+        return "done"
+    if item.get("status") == "processing":
+        try:
+            started = datetime.fromisoformat(str(item.get("updated_at", "")))
+        except (TypeError, ValueError):
+            return "new"
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        if _now(now) - started.astimezone(timezone.utc) <= PROCESSING_LEASE:
+            return "processing"
+    return "new"
+
+
+def claim_message(conversation_id, message_id, now=None):
+    """Claim an inbound message unless it was handled or has a live processing lease."""
+    if message_state(conversation_id, message_id, now=now) != "new":
+        return False
+    path = _seen_file_for(conversation_id)
+    record = _load_seen_record(path, now=now)
+    record["messages"][message_id] = {
+        "status": "processing",
+        "updated_at": _now(now).isoformat(timespec="seconds"),
+    }
+    # Bound the retry ledger so it does not grow indefinitely.
+    if len(record["messages"]) > MAX_SEEN_MESSAGE_IDS:
+        ordered = sorted(
+            record["messages"].items(),
+            key=lambda pair: str(pair[1].get("updated_at", "")) if isinstance(pair[1], dict) else "",
+        )
+        record["messages"] = dict(ordered[-MAX_SEEN_MESSAGE_IDS:])
+    _write_seen_record(path, record, now=now)
+    return True
+
+
+def mark_message_processed(conversation_id, message_id, now=None):
+    """Mark a successfully replied-to message as complete."""
+    if not isinstance(message_id, str) or not message_id or len(message_id) > 500:
+        return
+    path = _seen_file_for(conversation_id)
+    record = _load_seen_record(path, now=now)
+    record["messages"][message_id] = {
+        "status": "done",
+        "updated_at": _now(now).isoformat(timespec="seconds"),
+    }
+    if len(record["messages"]) > MAX_SEEN_MESSAGE_IDS:
+        ordered = sorted(
+            record["messages"].items(),
+            key=lambda pair: str(pair[1].get("updated_at", "")) if isinstance(pair[1], dict) else "",
+        )
+        record["messages"] = dict(ordered[-MAX_SEEN_MESSAGE_IDS:])
+    _write_seen_record(path, record, now=now)
+
+
+def release_message(conversation_id, message_id, now=None):
+    """Release a message after a transient processing failure so a webhook retry can handle it."""
+    path = _seen_file_for(conversation_id)
+    record = _load_seen_record(path, now=now)
+    record["messages"].pop(message_id, None)
+    if not record["messages"]:
+        path.unlink(missing_ok=True)
+        return
+    _write_seen_record(path, record, now=now)
+
+
 def prune_expired(now=None):
     """Remove expired conversation files; intended to run during normal app requests."""
     if not DATA_DIR.exists():
         return 0
     current = _now(now)
     removed = 0
-    for path in DATA_DIR.glob("*.json"):
+    paths = list(DATA_DIR.glob("*.json")) + list(DATA_DIR.glob("*.seen"))
+    for path in paths:
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(record, dict) or _is_expired(record, now=current):

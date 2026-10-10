@@ -25,13 +25,20 @@ conversation_volume = modal.Volume.from_name("mini-agent-conversation-data", cre
 @modal.asgi_app()
 def web():
     from fastapi import FastAPI, HTTPException, Request
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, PlainTextResponse
     from uuid import UUID
     import asyncio
     from product_store import load_products, save_products, normalize_product
     from order_store import load_orders, update_order_status
     from message_service import handle_customer_message
-    from conversation_store import load_history, save_history, prune_expired
+    from conversation_store import (
+        load_history, save_history, prune_expired,
+        claim_message, mark_message_processed, release_message,
+    )
+    from instagram_channel import (
+        verify_webhook_challenge, verify_webhook_signature,
+        extract_text_messages, send_instagram_text,
+    )
 
     web_app = FastAPI()
     conversation_locks = {}
@@ -96,6 +103,80 @@ def web():
             )
             conversation_volume.commit()
             return {"answer": answer, "history": saved_history}
+
+    @web_app.get("/webhooks/instagram")
+    async def verify_instagram_webhook(request: Request):
+        params = request.query_params
+        challenge = verify_webhook_challenge(
+            params.get("hub.mode", ""),
+            params.get("hub.verify_token", ""),
+            params.get("hub.challenge", ""),
+        )
+        if challenge is None:
+            raise HTTPException(status_code=403, detail="تأیید وب‌هوک اینستاگرام ناموفق بود.")
+        return PlainTextResponse(challenge)
+
+    @web_app.post("/webhooks/instagram")
+    async def receive_instagram_webhook(request: Request):
+        raw_body = await request.body()
+        signature = request.headers.get("x-hub-signature-256")
+        if not verify_webhook_signature(raw_body, signature):
+            raise HTTPException(status_code=401, detail="امضای وب‌هوک معتبر نیست.")
+
+        try:
+            payload = json.loads(raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise HTTPException(status_code=400, detail="محتوای وب‌هوک نامعتبر است.")
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="محتوای وب‌هوک نامعتبر است.")
+
+        messages = extract_text_messages(payload)
+        processed = 0
+        for item in messages:
+            sender_id = item.get("sender_id", "")
+            message_id = item.get("message_id", "")
+            text = item.get("text", "").strip()
+            # Meta message IDs are required for safe retry/deduplication.
+            if not sender_id or not message_id or not text:
+                continue
+
+            key = "instagram:" + sender_id
+            lock = conversation_locks.setdefault(key, asyncio.Lock())
+            async with lock:
+                conversation_volume.reload()
+                removed = prune_expired()
+                if not claim_message(key, message_id):
+                    if removed:
+                        conversation_volume.commit()
+                    continue
+
+                # Persist a short processing lease before invoking the model so that
+                # webhook retries do not trigger simultaneous duplicate replies.
+                conversation_volume.commit()
+                try:
+                    history = load_history(key)
+                    answer = await handle_customer_message(text, history)
+                    await send_instagram_text(sender_id, answer)
+                    save_history(
+                        key,
+                        history + [
+                            {"role": "user", "content": text},
+                            {"role": "assistant", "content": answer},
+                        ],
+                    )
+                    mark_message_processed(key, message_id)
+                    conversation_volume.commit()
+                    processed += 1
+                except Exception:
+                    # Let Meta retry after transient model/API failures.
+                    release_message(key, message_id)
+                    conversation_volume.commit()
+                    raise HTTPException(
+                        status_code=502,
+                        detail="پردازش پیام اینستاگرام ناموفق بود؛ ارسال‌کننده می‌تواند دوباره تلاش کند.",
+                    )
+
+        return {"ok": True, "processed": processed}
 
     @web_app.get("/")
     async def home():
