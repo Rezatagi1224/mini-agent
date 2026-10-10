@@ -351,6 +351,10 @@ def web():
         product_volume.reload()
         return build_customer_directory(load_orders())
 
+    @web_app.get("/app.js")
+    async def app_js():
+        return FileResponse("/root/frontend/app.js", media_type="application/javascript")
+
     @web_app.get("/style.css")
     async def style():
         return FileResponse("/root/frontend/style.css")
