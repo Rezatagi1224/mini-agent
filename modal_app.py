@@ -7,7 +7,7 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics")
+    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics", "customer_analytics")
     .add_local_dir("frontend", "/root/frontend")
 )
 
@@ -31,6 +31,7 @@ def web():
     from product_store import load_products, save_products, normalize_product
     from order_store import load_orders, update_order_status
     from dashboard_analytics import build_dashboard
+    from customer_analytics import build_customer_directory
     from message_service import handle_customer_message
     from conversation_store import (
         load_history, save_history, prune_expired,
@@ -197,6 +198,10 @@ def web():
     async def dashboard_page():
         return FileResponse("/root/frontend/dashboard.html")
 
+    @web_app.get("/admin/customers-page")
+    async def customers_page():
+        return FileResponse("/root/frontend/customers.html")
+
     def require_admin(request: Request):
         import hmac
         expected = os.environ.get("ADMIN_PASSWORD", "")
@@ -282,6 +287,12 @@ def web():
         require_admin(request)
         product_volume.reload()
         return build_dashboard(load_orders(), load_products())
+
+    @web_app.get("/admin/customers")
+    async def customers(request: Request):
+        require_admin(request)
+        product_volume.reload()
+        return build_customer_directory(load_orders())
 
     @web_app.get("/style.css")
     async def style():

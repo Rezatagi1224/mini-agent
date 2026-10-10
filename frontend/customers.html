@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مدیریت مشتریان | Mini Agent</title>
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#18212f;background:#f3f5f8}
+*{box-sizing:border-box}body{margin:0;padding:16px}.wrap{max-width:1200px;margin:auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:23px;margin:0 0 6px}p{color:#64748b;margin:0}
+.panel,.metric{background:#fff;border:1px solid #e1e6ee;border-radius:14px;padding:16px;margin-bottom:14px}
+.nav{display:flex;gap:8px;flex-wrap:wrap}a.btn,button{font:inherit;border:0;border-radius:8px;padding:10px 13px;background:#172033;color:white;cursor:pointer;text-decoration:none}
+a.secondary{background:#e9edf3;color:#18212f}input{font:inherit;border:1px solid #cfd7e3;border-radius:8px;padding:11px;width:100%}
+.login-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.metric .label{color:#64748b;font-size:13px;margin-bottom:9px}.metric .value{font-size:22px;font-weight:bold}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:850px}
+th,td{text-align:right;padding:12px;border-bottom:1px solid #e8edf3;vertical-align:top;font-size:13px;white-space:pre-line}
+th{color:#64748b}.status{white-space:pre-wrap;margin-top:10px;font-size:14px}.muted{color:#64748b}.empty{padding:20px;text-align:center;color:#64748b}
+@media(max-width:600px){body{padding:10px}h1{font-size:20px}.panel,.metric{padding:12px}.login-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main class="wrap">
+<header>
+ <div><h1>مدیریت مشتریان</h1><p>نمای کلی مشتری‌ها بر اساس سفارش‌های ثبت‌شده</p></div>
+ <nav class="nav">
+  <a class="btn secondary" href="/admin">محصولات</a>
+  <a class="btn secondary" href="/admin/orders-page">سفارش‌ها</a>
+  <a class="btn secondary" href="/admin/dashboard-page">داشبورد فروش</a>
+  <button id="refresh" type="button">به‌روزرسانی</button>
+ </nav>
+</header>
+<section class="panel" id="login-panel">
+ <h2>ورود مدیر</h2><p style="margin-bottom:12px">از همان رمز پنل مدیریت استفاده کن.</p>
+ <form id="login-form" class="login-grid"><input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password" required><button id="login" type="submit">نمایش مشتریان</button></form>
+ <div id="login-status" class="status" role="status"></div>
+</section>
+<section id="customers-panel" hidden>
+ <div class="metrics" id="metrics"></div>
+ <section class="panel">
+  <label for="search">جست‌وجو در نام، شماره، آدرس یا نام کالا</label>
+  <input id="search" type="search" placeholder="مثلاً 0912، نام مشتری یا تی‌شرت" style="margin-top:8px">
+  <p id="count" class="muted" style="margin-top:10px"></p>
+ </section>
+ <section class="panel table-wrap">
+  <table><thead><tr><th>مشتری</th><th>تعداد سفارش</th><th>سفارش‌های تأییدشده/ارسال‌شده</th><th>مبلغ خرید تأییدشده</th><th>آخرین سفارش</th><th>آدرس آخرین سفارش</th></tr></thead><tbody id="customers"></tbody></table>
+  <div id="empty" class="empty" hidden>مشتری‌ای مطابق جست‌وجو پیدا نشد.</div>
+ </section>
+ <p class="muted">مبلغ خرید بر اساس سفارش‌های تأییدشده و ارسال‌شده است؛ این رقم لزوماً به معنی دریافت وجه نیست. اطلاعات تماس فقط در پنل مدیریت نمایش داده می‌شود.</p>
+</section>
+</main>
+<script>
+(() => {
+ const $ = id => document.getElementById(id);
+ let password = sessionStorage.getItem("mini_agent_admin_password") || "";
+ let customers = [];
+ const money = value => Number(value || 0).toLocaleString("fa-IR") + " تومان";
+ const statuses = {pending:"در انتظار تأیید",confirmed:"تأیید شده",shipped:"ارسال شده",cancelled:"لغو شده"};
+ const date = value => { const d = new Date(value); return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("fa-IR"); };
+ async function api(){
+  const response = await fetch("/admin/customers", {headers:{"X-Admin-Password":password}});
+  const data = await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.detail || "دریافت فهرست مشتریان ناموفق بود.");
+  return data;
+ }
+ function render(){
+  const query = $("search").value.trim().toLocaleLowerCase("fa-IR");
+  const filtered = customers.filter(c => [c.customer_name,c.phone,c.address,...(c.products||[])].join(" ").toLocaleLowerCase("fa-IR").includes(query));
+  const body = $("customers"); body.replaceChildren();
+  $("empty").hidden = filtered.length > 0;
+  $("count").textContent = "نمایش " + filtered.length.toLocaleString("fa-IR") + " از " + customers.length.toLocaleString("fa-IR") + " مشتری";
+  for(const c of filtered){
+   const tr=document.createElement("tr");
+   const values=[
+    (c.customer_name||"مشتری بدون نام")+"\n"+(c.phone||"شماره ثبت نشده"),
+    Number(c.order_count||0).toLocaleString("fa-IR"),
+    Number(c.completed_order_count||0).toLocaleString("fa-IR"),
+    money(c.total_spent),
+    date(c.last_order_at)+"\n"+(statuses[c.last_order_status]||c.last_order_status||"—")+"\n"+((c.products||[]).slice(0,4).join("، ")||"—"),
+    c.address||"آدرس ثبت نشده"
+   ];
+   for(const value of values){const td=document.createElement("td");td.textContent=value;tr.appendChild(td)}
+   body.appendChild(tr);
+  }
+ }
+ async function load(){
+  $("login-status").textContent="در حال دریافت اطلاعات...";
+  $("login").disabled=true;
+  try{
+   const data=await api(); customers=data.customers||[];
+   const summary=data.summary||{};
+   const metrics=[
+    ["کل مشتریان",summary.total_customers],
+    ["مشتریان تکراری",summary.repeat_customers],
+    ["مشتریان با خرید تأییدشده",summary.customers_with_completed_orders],
+    ["مجموع خرید تأییدشده",money(summary.completed_order_revenue)]
+   ];
+   $("metrics").replaceChildren();
+   for(const [label,value] of metrics){
+    const card=document.createElement("div");card.className="metric";
+    const l=document.createElement("div");l.className="label";l.textContent=label;
+    const v=document.createElement("div");v.className="value";v.textContent=value??0;
+    card.append(l,v);$("metrics").appendChild(card);
+   }
+   sessionStorage.setItem("mini_agent_admin_password",password);
+   $("login-panel").hidden=true;$("customers-panel").hidden=false;$("login-status").textContent="";
+   render();
+  }catch(error){$("login-status").textContent=error.message;$("customers-panel").hidden=true;$("login-panel").hidden=false}
+  finally{$("login").disabled=false}
+ }
+ $("login-form").addEventListener("submit",async event=>{event.preventDefault();password=$("password").value;await load()});
+ $("password").addEventListener("keydown",event=>{if(event.key==="Enter")$("login-form").requestSubmit()});
+ $("search").addEventListener("input",render);
+ $("refresh").addEventListener("click",()=>{if(!password){$("login-panel").hidden=false;return}load()});
+ if(password){$("password").value=password;load()}
+})();
+</script>
+</body></html>
