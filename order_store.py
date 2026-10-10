@@ -236,3 +236,35 @@ def update_order_status(order_id, status):
         _save_products_file(products)
     save_orders(orders)
     return order
+
+
+PAYMENT_STATUSES = {
+    "unpaid": "پرداخت‌نشده",
+    "paid": "پرداخت‌شده",
+    "refunded": "مستردشده",
+}
+
+
+def update_order_payment_status(order_id, payment_status):
+    """Update manual payment tracking without claiming a payment gateway was used."""
+    if payment_status not in PAYMENT_STATUSES:
+        raise ValueError("وضعیت پرداخت نامعتبر است.")
+    orders = load_orders()
+    order = next((item for item in orders if item.get("id") == order_id), None)
+    if order is None:
+        return None
+    current = order.get("payment_status", "unpaid")
+    if current == payment_status:
+        return order
+    status = order.get("status", "pending")
+    if payment_status == "paid" and status not in {"confirmed", "shipped"}:
+        raise ValueError("ثبت پرداخت فقط برای سفارش تأییدشده یا ارسال‌شده مجاز است.")
+    if payment_status == "refunded":
+        if status != "cancelled":
+            raise ValueError("ثبت استرداد وجه فقط برای سفارش لغوشده مجاز است.")
+        if current != "paid":
+            raise ValueError("برای ثبت استرداد، ابتدا پرداخت باید به‌عنوان دریافت‌شده ثبت شده باشد.")
+    order["payment_status"] = payment_status
+    order["payment_status_label"] = PAYMENT_STATUSES[payment_status]
+    save_orders(orders)
+    return order
