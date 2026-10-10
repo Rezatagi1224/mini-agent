@@ -39,9 +39,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
 <section id="report-panel" hidden>
   <div class="grid" id="metrics"></div>
   <section class="panel"><h2>۵ محصول پرفروش</h2><div class="table-wrap"><table><thead><tr><th>محصول</th><th>تعداد فروخته‌شده</th></tr></thead><tbody id="top-products"></tbody></table></div></section>
-  <section class="panel"><h2>فروش روزانه — ۷ روز اخیر</h2><div class="table-wrap"><table><thead><tr><th>تاریخ (UTC)</th><th>تعداد سفارش فروش</th><th>مبلغ</th></tr></thead><tbody id="daily-sales"></tbody></table></div></section>
+  <section class="panel"><h2>ارزش سفارش‌های تأییدشده/ارسال‌شده — ۷ روز اخیر (UTC)</h2><div class="table-wrap"><table><thead><tr><th>تاریخ (UTC)</th><th>تعداد سفارش فروش</th><th>مبلغ</th></tr></thead><tbody id="daily-sales"></tbody></table></div></section>
   <section class="panel"><h2>هشدارهای موجودی</h2><p class="muted" id="inventory-summary"></p><ul class="alert-list" id="inventory-alerts"></ul></section>
-  <p class="muted">مبلغ فروش بر اساس سفارش‌های تأییدشده محاسبه می‌شود؛ چون پرداخت آنلاین فعال نیست، این مبلغ لزوماً به معنی پول دریافت‌شده نیست.</p>
+  <p class="muted">مبلغ این گزارش ارزش سفارش‌های تأییدشده و ارسال‌شده را نشان می‌دهد، نه دریافت وجه قطعی. چون وضعیت پرداخت جداگانه در سیستم ثبت نمی‌شود، از این ارقام نمی‌توان مبلغ وصول‌شده را نتیجه گرفت. روزها بر اساس UTC محاسبه می‌شوند.</p>
 </section>
 </main>
 <script>
@@ -67,13 +67,15 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
         ["تأییدشده", data.orders.confirmed],
         ["ارسال‌شده", data.orders.shipped],
         ["لغوشده", data.orders.cancelled],
-        ["فروش تأییدشده", money(data.sales.confirmed_amount)],
+        ["ارزش سفارش‌های تأییدشده/ارسال‌شده", money(data.sales.confirmed_amount)],
+        ["ارزش سفارش‌های لغوشده", money(data.sales.cancelled_amount)],
         ["فروش ۷ روز اخیر", money(data.sales.last_7_days_amount)],
         ["میانگین مبلغ سفارش تأییدشده", money(data.sales.average_order_amount)],
         ["نرخ لغو سفارش‌های تعیین‌تکلیف‌شده", Number(data.sales.cancellation_rate_percent || 0).toLocaleString("fa-IR") + "٪"],
         ["مشتریان با حداقل ۲ سفارش تکمیل‌شده", Number(data.customers.repeat_customers || 0).toLocaleString("fa-IR")],
         ["تنوع ناموجود", Number(data.inventory.zero_variant_count || 0).toLocaleString("fa-IR")],
-        ["ترکیب‌های کم‌موجودی", Number(data.inventory.low_variant_count || 0).toLocaleString("fa-IR")]
+        ["ترکیب‌های کم‌موجودی", Number(data.inventory.low_variant_count || 0).toLocaleString("fa-IR")],
+        ["ترکیب‌های با موجودی نامشخص", Number(data.inventory.unverified_variant_count || 0).toLocaleString("fa-IR")]
       ];
       $("metrics").replaceChildren();
       for (const [label, value] of metrics) {

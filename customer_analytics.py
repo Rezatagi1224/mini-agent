@@ -2,7 +2,7 @@
 import unicodedata
 
 
-def _phone_key(value):
+def normalize_phone_key(value):
     digits = []
     for character in unicodedata.normalize("NFKC", str(value or "")):
         try:
@@ -24,7 +24,7 @@ def build_customer_directory(orders):
         if not isinstance(order, dict):
             continue
         phone = str(order.get("phone", "")).strip()
-        normalized_phone = _phone_key(phone)
+        normalized_phone = normalize_phone_key(phone)
         key = normalized_phone or ("order:" + str(order.get("id", "")))
         created_at = str(order.get("created_at", ""))
         status = str(order.get("status", "pending"))

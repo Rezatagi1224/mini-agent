@@ -10,11 +10,11 @@ class DashboardAnalyticsTests(unittest.TestCase):
 
     def test_status_counts_sales_daily_totals_and_repeat_customers(self):
         orders = [
-            {"id": "1", "status": "pending", "phone": "0912", "total_price": 100, "quantity": 1,
+            {"id": "1", "status": "pending", "phone": "۰۹۱۲-۳۴۵-۶۷۸۹", "total_price": 100, "quantity": 1,
              "product_name": "پیراهن", "created_at": "2026-10-10T09:00:00Z"},
-            {"id": "2", "status": "confirmed", "phone": "0912", "total_price": 200, "quantity": 2,
+            {"id": "2", "status": "confirmed", "phone": "0912 345 6789", "total_price": 200, "quantity": 2,
              "product_name": "پیراهن", "created_at": "2026-10-10T10:00:00Z"},
-            {"id": "3", "status": "shipped", "phone": "0912", "total_price": 300, "quantity": 3,
+            {"id": "3", "status": "shipped", "phone": "+98 9123456789", "total_price": 300, "quantity": 3,
              "product_name": "پیراهن", "created_at": "2026-10-09T10:00:00Z"},
             {"id": "4", "status": "cancelled", "phone": "0935", "total_price": 50, "quantity": 1,
              "product_name": "تی‌شرت", "created_at": "2026-10-10T10:00:00Z"},

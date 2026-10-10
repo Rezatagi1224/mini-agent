@@ -1,15 +1,11 @@
 """Pure sales and inventory analytics used by the admin dashboard."""
-import unicodedata
 from datetime import datetime, timedelta, timezone
+
+from customer_analytics import normalize_phone_key
 
 
 SOLD_STATUSES = {"confirmed", "shipped"}
 STATUS_ORDER = ("pending", "confirmed", "shipped", "cancelled")
-
-
-def _normal(value):
-    value = unicodedata.normalize("NFKC", str(value or "")).casefold().strip()
-    return " ".join(value.split())
 
 
 def _integer(value, default=0):
@@ -124,7 +120,7 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
             sold_orders.append(order)
             name = str(order.get("product_name") or "محصول بدون نام")
             top[name] = top.get(name, 0) + quantity
-            phone = _normal(order.get("phone", ""))
+            phone = normalize_phone_key(order.get("phone", ""))
             if phone:
                 customer_completed_orders[phone] = customer_completed_orders.get(phone, 0) + 1
             created = _parse_datetime(order.get("created_at"))
