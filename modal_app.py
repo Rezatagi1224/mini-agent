@@ -300,7 +300,7 @@ def web():
             if not isinstance(order, dict):
                 continue
             phone = str(order.get("phone", "")).strip()
-            normalized_phone = re.sub(r"\\D", "", unicodedata.normalize("NFKC", phone))
+            normalized_phone = re.sub(r"\D", "", unicodedata.normalize("NFKC", phone))
             key = normalized_phone or ("order:" + str(order.get("id", "")))
             if key not in grouped:
                 grouped[key] = {
