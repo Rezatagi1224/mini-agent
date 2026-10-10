@@ -40,9 +40,19 @@ class ExpenseStoreTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     expense_store.create_expense(payload)
 
-    def test_corrupt_file_is_safe(self):
-        self.path.write_text("{bad json", encoding="utf-8")
-        self.assertEqual(expense_store.load_expenses(), [])
+    def test_corrupt_file_is_not_mistaken_for_empty_ledger(self):
+        original = "{bad json"
+        self.path.write_text(original, encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "قابل خواندن نیست"):
+            expense_store.load_expenses()
+        self.assertEqual(self.path.read_text(encoding="utf-8"), original)
+
+    def test_invalid_json_shape_is_rejected(self):
+        original = json.dumps({"not": "a list"})
+        self.path.write_text(original, encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "ساختار"):
+            expense_store.load_expenses()
+        self.assertEqual(self.path.read_text(encoding="utf-8"), original)
 
 
 if __name__ == "__main__":
