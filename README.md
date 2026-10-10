@@ -34,3 +34,13 @@ The server endpoint is `/webhooks/instagram`. To enable it, add these environmen
 Then configure the callback URL `https://davoudtaghizade--mini-agent-web.modal.run/webhooks/instagram` in the Meta app dashboard and subscribe to the Instagram `messages` webhook field. Use an Instagram professional account and grant the Instagram Messaging permission. This endpoint validates Meta signatures, ignores outgoing echoes/non-text events, reuses the same sales agent and customer conversation history, and deduplicates webhook retries.
 
 The integration remains inactive until the Meta app, permissions, callback verification, and Modal secrets are configured. The API's send/receive requirements are documented in [Meta's Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
+
+
+## Purchase costs and manual expenses
+
+- Products can optionally record a purchase cost per unit in toman.
+- New orders snapshot the product's recorded unit cost so later catalog edits do not rewrite historical order costs.
+- The admin dashboard reports recorded gross profit, manually entered expenses, and net profit after those recorded expenses.
+- Legacy/completed orders without a saved unit cost are counted separately; the dashboard warns that profit is incomplete while any completed order lacks a cost snapshot.
+- Expenses can be added and removed from the admin dashboard. Entered expenses are manual records and should be reconciled with receipts or bookkeeping.
+- Payment status is also manually recorded; this app does not verify bank transactions or provide a payment gateway.
