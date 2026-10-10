@@ -11,7 +11,6 @@ from typing import Any
 
 from store_context import validate_store_id
 
-import httpx
 
 
 def verify_webhook_challenge(mode: str, verify_token: str, challenge: str) -> str | None:
@@ -112,6 +111,9 @@ async def send_instagram_text(
             "Instagram messaging is not configured: set INSTAGRAM_ACCESS_TOKEN "
             "and INSTAGRAM_BUSINESS_ACCOUNT_ID in Modal secrets."
         )
+
+    # Keep pure parsing/routing helpers importable in lightweight test environments.
+    import httpx
 
     url = f"{graph_base_url}/{api_version}/{instagram_account_id}/messages"
     headers = {"Authorization": f"Bearer {access_token}"}
