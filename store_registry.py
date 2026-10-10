@@ -199,6 +199,14 @@ def set_store_active(store_id, active):
     record = registry["stores"].get(store_id)
     if not isinstance(record, dict):
         raise ValueError("فروشگاه پیدا نشد.")
+    if record.get("active") is not active:
+        try:
+            current_version = int(record.get("credential_version", 1))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("نسخهٔ اعتبارنامهٔ مدیر فروشگاه نامعتبر است.") from exc
+        if current_version < 0:
+            raise RuntimeError("نسخهٔ اعتبارنامهٔ مدیر فروشگاه نامعتبر است.")
+        record["credential_version"] = current_version + 1
     record["active"] = active
     _write_registry(registry)
     return _public_record(store_id, record)
