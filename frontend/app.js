@@ -3,7 +3,9 @@ const input = document.getElementById("message-input");
 const chat = document.getElementById("chat");
 const button = document.getElementById("send-button");
 
-const SESSION_KEY = "mini_agent_conversation_id";
+const routeParts = window.location.pathname.split("/").filter(Boolean);
+const storeId = routeParts[0] === "s" && routeParts[1] ? routeParts[1] : "default";
+const SESSION_KEY = "mini_agent_conversation_id:" + storeId;
 let history = [];
 
 function createSessionId() {
@@ -60,7 +62,7 @@ function renderHistory() {
 
 async function loadHistory() {
     const response = await fetch(
-        `/chat/history?conversation_id=${encodeURIComponent(conversationId)}`,
+        `/chat/history?conversation_id=${encodeURIComponent(conversationId)}&store_id=${encodeURIComponent(storeId)}`,
         { method: "GET", cache: "no-store" }
     );
     if (!response.ok) {
@@ -108,7 +110,8 @@ form.addEventListener("submit", async event => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 message: message,
-                conversation_id: conversationId
+                conversation_id: conversationId,
+                store_id: storeId
             })
         });
 
