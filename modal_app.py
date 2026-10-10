@@ -197,6 +197,10 @@ def web():
     async def dashboard_page():
         return FileResponse("/root/frontend/dashboard.html")
 
+    @web_app.get("/admin/customers-page")
+    async def customers_page():
+        return FileResponse("/root/frontend/customers.html")
+
     def require_admin(request: Request):
         import hmac
         expected = os.environ.get("ADMIN_PASSWORD", "")
@@ -282,6 +286,66 @@ def web():
         require_admin(request)
         product_volume.reload()
         return build_dashboard(load_orders(), load_products())
+
+    @web_app.get("/admin/customers")
+    async def customers(request: Request):
+        require_admin(request)
+        product_volume.reload()
+        import re
+        import unicodedata
+        from datetime import datetime
+
+        grouped = {}
+        orders = load_orders()
+        for order in orders:
+            if not isinstance(order, dict):
+                continue
+            phone = str(order.get("phone", "")).strip()
+            normalized_phone = re.sub(r"\\D", "", unicodedata.normalize("NFKC", phone))
+            key = normalized_phone or ("order:" + str(order.get("id", "")))
+            if key not in grouped:
+                grouped[key] = {
+                    "customer_name": str(order.get("customer_name", "مشتری بدون نام")),
+                    "phone": phone,
+                    "address": str(order.get("address", "")),
+                    "order_count": 0,
+                    "completed_order_count": 0,
+                    "total_spent": 0,
+                    "last_order_at": str(order.get("created_at", "")),
+                    "last_order_status": str(order.get("status", "pending")),
+                    "products": [],
+                }
+            customer = grouped[key]
+            customer["order_count"] += 1
+            status = str(order.get("status", "pending"))
+            if status in {"confirmed", "shipped"}:
+                customer["completed_order_count"] += 1
+                try:
+                    customer["total_spent"] += max(0, int(order.get("total_price", 0)))
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            created_at = str(order.get("created_at", ""))
+            if created_at >= customer["last_order_at"]:
+                customer["last_order_at"] = created_at
+                customer["last_order_status"] = status
+                customer["customer_name"] = str(order.get("customer_name", customer["customer_name"]))
+                customer["phone"] = phone or customer["phone"]
+                customer["address"] = str(order.get("address", customer["address"]))
+            product_name = str(order.get("product_name", "")).strip()
+            if product_name and product_name not in customer["products"]:
+                customer["products"].append(product_name)
+
+        customers_list = list(grouped.values())
+        customers_list.sort(key=lambda item: (item["last_order_at"], item["order_count"]), reverse=True)
+        return {
+            "customers": customers_list,
+            "summary": {
+                "total_customers": len(customers_list),
+                "repeat_customers": sum(1 for item in customers_list if item["order_count"] >= 2),
+                "customers_with_completed_orders": sum(1 for item in customers_list if item["completed_order_count"] > 0),
+                "completed_order_revenue": sum(item["total_spent"] for item in customers_list),
+            },
+        }
 
     @web_app.get("/style.css")
     async def style():
