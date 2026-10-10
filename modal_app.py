@@ -36,6 +36,7 @@ def web():
     from admin_auth import (
         ADMIN_SESSION_COOKIE,
         ADMIN_SESSION_TTL_SECONDS,
+        AdminLoginRateLimiter,
         create_admin_session_token,
         verify_admin_password,
         verify_admin_session_token,
@@ -52,6 +53,7 @@ def web():
 
     web_app = FastAPI()
     conversation_locks = {}
+    admin_login_limiter = AdminLoginRateLimiter(max_attempts=5, window_seconds=15 * 60)
 
     def web_conversation_key(value):
         if not isinstance(value, str):
@@ -232,9 +234,19 @@ def web():
             raise HTTPException(status_code=400, detail="درخواست ورود نامعتبر است.")
         password = payload.get("password") if isinstance(payload, dict) else None
         expected = os.environ.get("ADMIN_PASSWORD", "")
+        client_key = request.client.host if request.client else "unknown"
+        if not admin_login_limiter.is_allowed(client_key):
+            retry_after = admin_login_limiter.retry_after(client_key)
+            raise HTTPException(
+                status_code=429,
+                detail="به‌دلیل تلاش‌های ناموفق زیاد، ورود موقتاً محدود شده است.",
+                headers={"Retry-After": str(retry_after)},
+            )
         if not verify_admin_password(password, expected):
+            admin_login_limiter.record_failure(client_key)
             raise HTTPException(status_code=401, detail="رمز مدیریت نادرست است.")
 
+        admin_login_limiter.clear(client_key)
         token = create_admin_session_token(expected)
         response.set_cookie(
             key=ADMIN_SESSION_COOKIE,
