@@ -44,6 +44,13 @@ Then configure the callback URL `https://davoudtaghizade--mini-agent-web.modal.r
 The integration remains inactive until the Meta app, permissions, callback verification, and Modal secrets are configured. The API's send/receive requirements are documented in [Meta's Instagram API collection](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
 
 
+## Store data isolation groundwork
+
+- Product catalogs, order ledgers, inventory files, and expense ledgers resolve paths using an async-context-local store identifier.
+- The existing `default` store continues to use the legacy `/data/*.json` files, preserving current production data.
+- Named stores use `/data/stores/<store_id>/*.json`; new stores start with an empty catalog rather than copying the default store's seed catalog.
+- This is storage-layer groundwork only. Store-specific administrator identity, owner permissions, store selection, and channel-to-store routing must be completed before multi-store operation is enabled.
+
 ## Purchase costs and manual expenses
 
 - Products can optionally record a purchase cost per unit in toman.
