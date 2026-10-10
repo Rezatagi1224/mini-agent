@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مدیریت فروشگاه‌ها | Mini Agent</title>
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#18212f;background:#f3f5f8}
+*{box-sizing:border-box}body{margin:0;padding:16px}.wrap{max-width:1000px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:23px;margin:0 0 6px}p{color:#64748b;margin:0;line-height:1.7}
+.panel{background:#fff;border:1px solid #e1e6ee;border-radius:14px;padding:16px;margin-bottom:14px}
+input,button,a{font:inherit;border-radius:8px;padding:10px 12px}
+input{border:1px solid #cfd7e3;background:#fff;width:100%;min-width:0}
+button,a.btn{border:0;background:#172033;color:#fff;cursor:pointer;text-decoration:none;display:inline-block}
+button.secondary,a.secondary{background:#e9edf3;color:#18212f}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:12px}
+.status{white-space:pre-wrap;margin-top:10px;font-size:14px;line-height:1.7}
+.muted{color:#64748b;font-size:13px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:650px}
+th,td{text-align:right;padding:11px;border-bottom:1px solid #e8edf3;vertical-align:top;font-size:13px}
+th{color:#64748b}.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.row-password{min-width:160px;width:200px}
+.hidden{display:none!important}
+@media(max-width:600px){body{padding:10px}.panel{padding:12px}h1{font-size:20px}}
+</style>
+</head>
+<body><main class="wrap">
+<header>
+ <div><h1>مدیریت فروشگاه‌ها</h1><p>ساخت فروشگاه مستقل، مدیریت مدیران و روشن/خاموش‌کردن دسترسی عمومی</p></div>
+ <nav class="actions">
+  <a class="btn secondary" href="/admin">محصولات</a>
+  <a class="btn secondary" href="/admin/orders-page">سفارش‌ها</a>
+  <a class="btn secondary" href="/admin/dashboard-page">داشبورد</a>
+ </nav>
+</header>
+<section class="panel" id="login-panel">
+ <h2>ورود مدیر اصلی</h2>
+ <p>برای ایجاد فروشگاه یا مدیریت رمز مدیران باید با رمز اصلی تنظیم‌شده در Modal وارد شوی.</p>
+ <form id="login-form" class="grid">
+  <input id="store-id" value="default" placeholder="شناسه فروشگاه" autocomplete="organization" required>
+  <input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password" required>
+  <button id="login-button" type="submit">ورود</button>
+ </form>
+ <div id="login-status" class="status" role="status"></div>
+</section>
+<section id="manager" class="hidden">
+ <section class="panel">
+  <h2>ساخت فروشگاه جدید</h2>
+  <p>شناسه باید فقط شامل حروف کوچک انگلیسی، عدد، خط تیره یا زیرخط باشد. این شناسه در نشانی فروشگاه هم استفاده می‌شود.</p>
+  <form id="create-form" class="grid">
+   <input id="new-id" placeholder="شناسه، مثلاً shop-02" pattern="[a-z0-9][a-z0-9_-]{0,63}" maxlength="64" required>
+   <input id="new-name" placeholder="نام نمایشی فروشگاه" maxlength="100" required>
+   <input id="new-password" type="password" placeholder="رمز مدیر فروشگاه (حداقل ۱۲ نویسه)" minlength="12" autocomplete="new-password" required>
+   <button id="create-button" type="submit">ایجاد فروشگاه</button>
+  </form>
+  <div id="create-status" class="status" role="status"></div>
+ </section>
+ <section class="panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+   <h2>فروشگاه‌های ثبت‌شده</h2><button id="refresh" class="secondary" type="button">به‌روزرسانی</button>
+  </div>
+  <p class="muted">غیرفعال‌کردن، ورود مدیر آن فروشگاه و چت عمومی را متوقف می‌کند اما فایل‌های داده را حذف نمی‌کند.</p>
+  <div class="table-wrap"><table><thead><tr><th>فروشگاه</th><th>وضعیت</th><th>چت عمومی</th><th>مدیریت</th></tr></thead><tbody id="stores"></tbody></table></div>
+  <div id="list-status" class="status" role="status"></div>
+ </section>
+</section>
+</main>
+<script>
+(() => {
+ const $ = id => document.getElementById(id);
+ async function api(path, options={}) {
+  const response=await fetch(path,{...options,credentials:"same-origin",headers:{"Content-Type":"application/json",...(options.headers||{})}});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data.detail||"درخواست ناموفق بود.");
+  return data;
+ }
+ function showLoggedIn(){ $("login-panel").classList.add("hidden"); $("manager").classList.remove("hidden"); }
+ function showLoggedOut(){ $("login-panel").classList.remove("hidden"); $("manager").classList.add("hidden"); }
+ async function loadStores(){
+  $("list-status").textContent="در حال دریافت فهرست...";
+  try{
+   const data=await api("/admin/stores");
+   const body=$("stores");body.replaceChildren();
+   for(const store of (data.stores||[])){
+    const tr=document.createElement("tr");
+    const title=document.createElement("td");
+    const name=document.createElement("strong");name.textContent=store.name||store.store_id;
+    const id=document.createElement("div");id.className="muted";id.textContent=store.store_id;
+    title.append(name,id);
+    const state=document.createElement("td");state.textContent=store.active?"فعال":"غیرفعال";
+    const linkCell=document.createElement("td");
+    if(store.active){
+     const link=document.createElement("a");link.className="btn secondary";link.href=store.store_id==="default"?"/":"/s/"+encodeURIComponent(store.store_id);link.target="_blank";link.rel="noopener";link.textContent="بازکردن";linkCell.appendChild(link);
+    }else{linkCell.textContent="غیرفعال";}
+    const controls=document.createElement("td");
+    if(store.store_id!=="default"){
+     const toggle=document.createElement("button");toggle.className="secondary";toggle.textContent=store.active?"غیرفعال‌کردن":"فعال‌کردن";
+     toggle.addEventListener("click",async()=>{
+      toggle.disabled=true;
+      try{await api("/admin/stores/"+encodeURIComponent(store.store_id),{method:"PATCH",body:JSON.stringify({active:!store.active})});await loadStores();}
+      catch(e){$("list-status").textContent=e.message;toggle.disabled=false;}
+     });
+     const resetInput=document.createElement("input");resetInput.className="row-password";resetInput.type="password";resetInput.minLength=12;resetInput.placeholder="رمز جدید (حداقل ۱۲ نویسه)";resetInput.autocomplete="new-password";resetInput.setAttribute("aria-label","رمز جدید مدیر "+store.name);
+     const reset=document.createElement("button");reset.textContent="تغییر رمز";
+     reset.addEventListener("click",async()=>{
+      if(resetInput.value.length<12){$("list-status").textContent="رمز جدید باید دست‌کم ۱۲ نویسه باشد.";return;}
+      reset.disabled=true;
+      try{
+       await api("/admin/stores/"+encodeURIComponent(store.store_id)+"/password",{method:"PUT",body:JSON.stringify({password:resetInput.value})});
+       resetInput.value="";$("list-status").textContent="رمز مدیر فروشگاه به‌روزرسانی شد.";
+      }catch(e){$("list-status").textContent=e.message;}
+      finally{reset.disabled=false;}
+     });
+     controls.append(toggle,document.createElement("br"),resetInput,reset);
+    }else{controls.textContent="حساب اصلی؛ قابل غیرفعال‌سازی نیست.";}
+    tr.append(title,state,linkCell,controls);body.appendChild(tr);
+   }
+   $("list-status").textContent=(data.stores||[]).length+" فروشگاه ثبت شده است.";
+  }catch(e){$("list-status").textContent=e.message;if(e.message.includes("فقط برای مدیر اصلی")){showLoggedOut();}}
+ }
+ $("login-form").addEventListener("submit",async event=>{
+  event.preventDefault();$("login-button").disabled=true;$("login-status").textContent="در حال ورود...";
+  try{
+   await api("/admin/login",{method:"POST",body:JSON.stringify({store_id:$("store-id").value.trim()||"default",password:$("password").value})});
+   await api("/admin/session");
+   showLoggedIn();await loadStores();
+  }catch(e){$("login-status").textContent=e.message;showLoggedOut();}
+  finally{$("login-button").disabled=false;}
+ });
+ $("create-form").addEventListener("submit",async event=>{
+  event.preventDefault();$("create-button").disabled=true;$("create-status").textContent="در حال ایجاد...";
+  try{
+   const result=await api("/admin/stores",{method:"POST",body:JSON.stringify({store_id:$("new-id").value.trim(),name:$("new-name").value.trim(),password:$("new-password").value})});
+   $("create-form").reset();$("create-status").textContent="فروشگاه "+result.store.store_id+" ساخته شد. نشانی: "+location.origin+"/s/"+result.store.store_id;
+   await loadStores();
+  }catch(e){$("create-status").textContent=e.message;}
+  finally{$("create-button").disabled=false;}
+ });
+ $("refresh").addEventListener("click",loadStores);
+ (async()=>{
+  try{await api("/admin/session");showLoggedIn();await loadStores();}
+  catch(_){showLoggedOut();}
+ })();
+})();
+</script>
+</body></html>
