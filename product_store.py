@@ -14,15 +14,18 @@ def _copy_products(items):
 
 
 def load_products():
-    """Load the latest catalog from persistent Modal Volume, falling back to seed data."""
-    if DATA_FILE.exists():
-        try:
-            data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                return _copy_products(data)
-        except (OSError, json.JSONDecodeError):
-            pass
-    return _copy_products(DEFAULT_PRODUCTS)
+    """Load the persistent catalog; use seed data only before the first save."""
+    if not DATA_FILE.exists():
+        return _copy_products(DEFAULT_PRODUCTS)
+    try:
+        data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        # Falling back to seed data here could silently replace a real catalog
+        # when an admin saves the next edit.
+        raise RuntimeError("کاتالوگ قابل خواندن نیست؛ فایل داده را بررسی کن.") from exc
+    if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+        raise RuntimeError("ساختار فایل کاتالوگ نامعتبر است؛ از نوشتن روی آن خودداری شد.")
+    return _copy_products(data)
 
 
 def save_products(products):

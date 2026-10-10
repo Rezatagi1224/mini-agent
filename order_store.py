@@ -35,9 +35,13 @@ def load_orders():
         return []
     try:
         data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (OSError, json.JSONDecodeError):
-        return []
+    except (OSError, json.JSONDecodeError) as exc:
+        # Never treat damaged/unreadable order history as an empty store:
+        # a subsequent write could otherwise overwrite the real order ledger.
+        raise RuntimeError("سفارش‌ها قابل خواندن نیستند؛ فایل داده را بررسی کن.") from exc
+    if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+        raise RuntimeError("ساختار فایل سفارش‌ها نامعتبر است؛ از نوشتن روی آن خودداری شد.")
+    return data
 
 
 def save_orders(orders):
