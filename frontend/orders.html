@@ -9,8 +9,8 @@
 </style>
 </head>
 <body><div class="wrap">
-<header><div><h1>مدیریت سفارش‌ها</h1><p>سفارش‌ها ابتدا در انتظار تأیید هستند؛ دریافت/استرداد وجه را دستی ثبت کن.</p></div><div><a class="btn secondary" href="/admin">مدیریت محصولات</a> <a class="btn secondary" href="/admin/dashboard-page">داشبورد فروش</a> <a class="btn secondary" href="/admin/customers-page">مدیریت مشتریان</a> <button id="refresh">به‌روزرسانی</button></div></header>
-<section class="panel" id="login-panel"><h2>ورود مدیر</h2><p style="margin:8px 0 12px">از همان رمز پنل مدیریت استفاده کن.</p><div class="grid"><input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password"><button id="login">ورود</button></div><div id="login-status" class="status"></div></section>
+<header><div><h1>مدیریت سفارش‌ها</h1><p>سفارش‌ها ابتدا در انتظار تأیید هستند؛ دریافت/استرداد وجه را دستی ثبت کن.</p></div><div><a class="btn secondary" href="/admin">مدیریت محصولات</a> <a class="btn secondary" href="/admin/dashboard-page">داشبورد فروش</a><a class="btn secondary" href="/admin/stores-page">مدیریت فروشگاه‌ها</a> <a class="btn secondary" href="/admin/customers-page">مدیریت مشتریان</a> <button id="refresh">به‌روزرسانی</button></div></header>
+<section class="panel" id="login-panel"><h2>ورود مدیر</h2><p style="margin:8px 0 12px">از همان رمز پنل مدیریت استفاده کن.</p><div class="grid"><input id="store-id" value="default" placeholder="شناسه فروشگاه (پیش‌فرض: default)" autocomplete="organization"><input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password"><button id="login">ورود</button></div><div id="login-status" class="status"></div></section>
 <section class="panel hidden" id="orders-panel"><div class="table-wrap"><table><thead><tr><th>سفارش</th><th>مشتری و ارسال</th><th>کالا</th><th>مبلغ</th><th>وضعیت سفارش</th><th>وضعیت پرداخت</th><th>تغییر وضعیت سفارش</th></tr></thead><tbody id="orders"></tbody></table></div><div id="orders-status" class="status"></div></section>
 </div>
 <script>
@@ -42,7 +42,7 @@
  $("login").addEventListener("click",async()=>{
   $("login").disabled=true;
   try{
-   const r=await fetch("/admin/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("password").value})});
+   const r=await fetch("/admin/login",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({store_id:$("store-id").value.trim()||"default",password:$("password").value})});
    const d=await r.json().catch(()=>({}));
    if(!r.ok)throw new Error(d.detail||"ورود ناموفق بود.");
    await load();
