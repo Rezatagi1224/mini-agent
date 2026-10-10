@@ -28,13 +28,16 @@ def _verify_v2_session(token: object, signing_secret: object, *, now: float | No
     if not isinstance(token, str) or not isinstance(signing_secret, str) or not signing_secret:
         return None
     parts = token.split(".")
-    if len(parts) != 5 or parts[0] != "v2":
+    if len(parts) != 6 or parts[0] != "v2":
         return None
-    _, expiry_text, role, store_id, supplied_signature = parts
+    _, expiry_text, role, store_id, version_text, supplied_signature = parts
     try:
         expires_at = int(expiry_text)
+        credential_version = int(version_text)
         from store_context import validate_store_id
         validate_store_id(store_id)
+        if credential_version < 0:
+            return None
     except (ValueError, TypeError):
         return None
     if role not in ("owner", "store_admin"):
@@ -42,7 +45,7 @@ def _verify_v2_session(token: object, signing_secret: object, *, now: float | No
     current_time = time.time() if now is None else now
     if not _valid_expiry(expires_at, current_time):
         return None
-    body = ".".join(parts[:4])
+    body = ".".join(parts[:5])
     expected_signature = hmac.new(
         signing_secret.encode("utf-8"),
         _SESSION_CONTEXT + body.encode("ascii"),
@@ -50,7 +53,7 @@ def _verify_v2_session(token: object, signing_secret: object, *, now: float | No
     ).hexdigest()
     if not hmac.compare_digest(supplied_signature, expected_signature):
         return None
-    return {"store_id": store_id, "role": role, "expires_at": expires_at}
+    return {"store_id": store_id, "role": role, "credential_version": credential_version, "expires_at": expires_at}
 
 
 def create_admin_session_token(
@@ -58,6 +61,7 @@ def create_admin_session_token(
     *,
     store_id: str = "default",
     role: str = "owner",
+    credential_version: int = 0,
     now: float | None = None,
 ) -> str:
     """Create a signed, short-lived token bound to a role and a single store."""
@@ -68,9 +72,11 @@ def create_admin_session_token(
     validate_store_id(store_id)
     if role not in ("owner", "store_admin"):
         raise ValueError("Invalid administrator role.")
+    if isinstance(credential_version, bool) or not isinstance(credential_version, int) or credential_version < 0:
+        raise ValueError("Invalid credential version.")
     issued_at = time.time() if now is None else now
     expires_at = int(issued_at + ADMIN_SESSION_TTL_SECONDS)
-    body = f"v2.{expires_at}.{role}.{store_id}"
+    body = f"v2.{expires_at}.{role}.{store_id}.{credential_version}"
     signature = hmac.new(
         password.encode("utf-8"),
         _SESSION_CONTEXT + body.encode("ascii"),
@@ -108,7 +114,7 @@ def read_admin_session_token(
         hashlib.sha256,
     ).hexdigest()
     if hmac.compare_digest(supplied_signature, expected_signature):
-        return {"store_id": "default", "role": "owner", "expires_at": expires_at}
+        return {"store_id": "default", "role": "owner", "credential_version": 0, "expires_at": expires_at}
     return None
 
 
