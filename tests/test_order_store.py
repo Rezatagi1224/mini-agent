@@ -120,6 +120,7 @@ class OrderStoreSafetyTests(unittest.TestCase):
 
     def test_refund_requires_cancelled_paid_order(self):
         order = self.make_order(quantity=1)
+        order_store.update_order_status(order["id"], "cancelled")
         with self.assertRaisesRegex(ValueError, "ابتدا پرداخت"):
             order_store.update_order_payment_status(order["id"], "refunded")
 
