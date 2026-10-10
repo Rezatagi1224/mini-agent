@@ -77,13 +77,18 @@ class OrderStoreSafetyTests(unittest.TestCase):
         order_store.update_order_status(order["id"], "cancelled")
         self.assertEqual(self.read_products()[0]["stock_by_variant"]["مشکی|L"], 3)
 
-    def test_confirmation_fails_if_variant_stock_is_insufficient(self):
-        order = self.make_order(quantity=4)
+    def test_confirmation_fails_if_variant_stock_falls_after_order(self):
+        order = self.make_order(quantity=2)
+        # Another sale can reduce stock while this order is still pending.
+        products = self.read_products()
+        products[0]["stock_by_variant"]["مشکی|L"] = 1
+        self.write_products(products)
+
         with self.assertRaisesRegex(ValueError, "موجودی کافی نیست"):
             order_store.update_order_status(order["id"], "confirmed")
         saved = order_store.load_orders()[0]
         self.assertEqual(saved["status"], "pending")
-        self.assertEqual(self.read_products()[0]["stock_by_variant"]["مشکی|L"], 3)
+        self.assertEqual(self.read_products()[0]["stock_by_variant"]["مشکی|L"], 1)
 
     def test_confirmation_fails_when_variant_stock_is_not_recorded(self):
         order = self.make_order(size="XL", color="سفید", quantity=1)
