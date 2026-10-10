@@ -7,7 +7,7 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics")
+    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics", "customer_analytics")
     .add_local_dir("frontend", "/root/frontend")
 )
 
@@ -31,6 +31,7 @@ def web():
     from product_store import load_products, save_products, normalize_product
     from order_store import load_orders, update_order_status
     from dashboard_analytics import build_dashboard
+    from customer_analytics import build_customer_directory
     from message_service import handle_customer_message
     from conversation_store import (
         load_history, save_history, prune_expired,
@@ -291,60 +292,7 @@ def web():
     async def customers(request: Request):
         require_admin(request)
         product_volume.reload()
-        import re
-        import unicodedata
-
-        grouped = {}
-        orders = load_orders()
-        for order in orders:
-            if not isinstance(order, dict):
-                continue
-            phone = str(order.get("phone", "")).strip()
-            normalized_phone = re.sub(r"\D", "", unicodedata.normalize("NFKC", phone))
-            key = normalized_phone or ("order:" + str(order.get("id", "")))
-            if key not in grouped:
-                grouped[key] = {
-                    "customer_name": str(order.get("customer_name", "مشتری بدون نام")),
-                    "phone": phone,
-                    "address": str(order.get("address", "")),
-                    "order_count": 0,
-                    "completed_order_count": 0,
-                    "total_spent": 0,
-                    "last_order_at": str(order.get("created_at", "")),
-                    "last_order_status": str(order.get("status", "pending")),
-                    "products": [],
-                }
-            customer = grouped[key]
-            customer["order_count"] += 1
-            status = str(order.get("status", "pending"))
-            if status in {"confirmed", "shipped"}:
-                customer["completed_order_count"] += 1
-                try:
-                    customer["total_spent"] += max(0, int(order.get("total_price", 0)))
-                except (TypeError, ValueError, OverflowError):
-                    pass
-            created_at = str(order.get("created_at", ""))
-            if created_at >= customer["last_order_at"]:
-                customer["last_order_at"] = created_at
-                customer["last_order_status"] = status
-                customer["customer_name"] = str(order.get("customer_name", customer["customer_name"]))
-                customer["phone"] = phone or customer["phone"]
-                customer["address"] = str(order.get("address", customer["address"]))
-            product_name = str(order.get("product_name", "")).strip()
-            if product_name and product_name not in customer["products"]:
-                customer["products"].append(product_name)
-
-        customers_list = list(grouped.values())
-        customers_list.sort(key=lambda item: (item["last_order_at"], item["order_count"]), reverse=True)
-        return {
-            "customers": customers_list,
-            "summary": {
-                "total_customers": len(customers_list),
-                "repeat_customers": sum(1 for item in customers_list if item["order_count"] >= 2),
-                "customers_with_completed_orders": sum(1 for item in customers_list if item["completed_order_count"] > 0),
-                "completed_order_revenue": sum(item["total_spent"] for item in customers_list),
-            },
-        }
+        return build_customer_directory(load_orders())
 
     @web_app.get("/style.css")
     async def style():
