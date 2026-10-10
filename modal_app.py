@@ -40,6 +40,12 @@ def web():
         create_admin_session_token,
         verify_admin_password,
         verify_admin_session_token,
+        read_admin_session_token,
+    )
+    from store_context import use_store, validate_store_id
+    from store_registry import (
+        create_store, get_store, is_store_active, list_stores,
+        reset_store_password, set_store_active, verify_store_password,
     )
     from message_service import handle_customer_message
     from conversation_store import (
@@ -48,14 +54,37 @@ def web():
     )
     from instagram_channel import (
         verify_webhook_challenge, verify_webhook_signature,
-        extract_text_messages, send_instagram_text,
+        extract_text_messages, resolve_instagram_account, send_instagram_text,
     )
 
     web_app = FastAPI()
     conversation_locks = {}
     admin_login_limiter = AdminLoginRateLimiter(max_attempts=5, window_seconds=15 * 60)
 
-    def web_conversation_key(value):
+    @web_app.middleware("http")
+    async def apply_admin_store_context(request: Request, call_next):
+        # Only signed claims can select a tenant for protected admin requests.
+        session = read_admin_session_token(
+            request.cookies.get(ADMIN_SESSION_COOKIE, ""),
+            os.environ.get("ADMIN_PASSWORD", ""),
+        )
+        request.state.signed_admin_session = session
+        if session is None:
+            return await call_next(request)
+        with use_store(session["store_id"]):
+            return await call_next(request)
+
+    def public_store_id(value):
+        try:
+            store_id = validate_store_id(value)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="فروشگاه پیدا نشد.")
+        product_volume.reload()
+        if not is_store_active(store_id):
+            raise HTTPException(status_code=404, detail="فروشگاه پیدا نشد یا غیرفعال است.")
+        return store_id
+
+    def web_conversation_key(value, store_id="default"):
         if not isinstance(value, str):
             raise HTTPException(status_code=400, detail="شناسه مکالمه نامعتبر است.")
         try:
@@ -64,11 +93,12 @@ def web():
             raise HTTPException(status_code=400, detail="شناسه مکالمه نامعتبر است.")
         if str(parsed) != value.lower():
             raise HTTPException(status_code=400, detail="شناسه مکالمه نامعتبر است.")
-        return "web:" + str(parsed)
+        return ("web:" + str(parsed)) if store_id == "default" else ("web:" + store_id + ":" + str(parsed))
 
     @web_app.get("/chat/history")
-    async def chat_history(conversation_id: str):
-        key = web_conversation_key(conversation_id)
+    async def chat_history(conversation_id: str, store_id: str = "default"):
+        store_id = public_store_id(store_id)
+        key = web_conversation_key(conversation_id, store_id)
         conversation_volume.reload()
         removed = prune_expired()
         history = load_history(key)
@@ -92,7 +122,8 @@ def web():
         if len(message) > 6000:
             raise HTTPException(status_code=400, detail="پیام نمی‌تواند بیشتر از ۶۰۰۰ نویسه باشد.")
 
-        key = web_conversation_key(payload.get("conversation_id"))
+        store_id = public_store_id(payload.get("store_id", "default"))
+        key = web_conversation_key(payload.get("conversation_id"), store_id)
         lock = conversation_locks.setdefault(key, asyncio.Lock())
         async with lock:
             conversation_volume.reload()
@@ -100,10 +131,10 @@ def web():
             prune_expired()
             history = load_history(key)
             try:
-                answer = await handle_customer_message(message, history)
-                # Order tools write to /data; commit the product volume so orders
-                # created by the agent survive container changes and later requests.
-                product_volume.commit()
+                with use_store(store_id):
+                    answer = await handle_customer_message(message, history)
+                    # Product/order/expense tools must run inside this store context.
+                    product_volume.commit()
             except Exception:
                 raise HTTPException(
                     status_code=502,
@@ -118,7 +149,7 @@ def web():
                 ],
             )
             conversation_volume.commit()
-            return {"answer": answer, "history": saved_history}
+            return {"answer": answer, "history": saved_history, "store_id": store_id}
 
     @web_app.get("/webhooks/instagram")
     async def verify_instagram_webhook(request: Request):
@@ -210,6 +241,11 @@ def web():
     async def home():
         return FileResponse("/root/frontend/index.html")
 
+    @web_app.get("/s/{store_id}")
+    async def store_home(store_id: str):
+        public_store_id(store_id)
+        return FileResponse("/root/frontend/index.html")
+
     @web_app.get("/admin")
     async def admin():
         return FileResponse("/root/frontend/admin.html")
@@ -226,13 +262,24 @@ def web():
     async def customers_page():
         return FileResponse("/root/frontend/customers.html")
 
+    @web_app.get("/admin/stores-page")
+    async def stores_page():
+        return FileResponse("/root/frontend/stores.html")
+
     @web_app.post("/admin/login")
     async def admin_login(request: Request, response: Response):
         try:
             payload = await request.json()
         except Exception:
             raise HTTPException(status_code=400, detail="درخواست ورود نامعتبر است.")
-        password = payload.get("password") if isinstance(payload, dict) else None
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="درخواست ورود نامعتبر است.")
+        password = payload.get("password")
+        try:
+            store_id = validate_store_id(payload.get("store_id", "default"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="شناسه فروشگاه نامعتبر است.")
+
         expected = os.environ.get("ADMIN_PASSWORD", "")
         client_key = request.client.host if request.client else "unknown"
         if not admin_login_limiter.is_allowed(client_key):
@@ -242,12 +289,23 @@ def web():
                 detail="به‌دلیل تلاش‌های ناموفق زیاد، ورود موقتاً محدود شده است.",
                 headers={"Retry-After": str(retry_after)},
             )
-        if not verify_admin_password(password, expected):
+
+        # Refresh the registry snapshot before authenticating a tenant.
+        product_volume.reload()
+        owner_login = verify_admin_password(password, expected)
+        store_record = get_store(store_id, include_inactive=True)
+        if owner_login:
+            if store_id != "default" and store_record is None:
+                raise HTTPException(status_code=404, detail="فروشگاه پیدا نشد.")
+            role = "owner"
+        elif store_record and store_record.get("active") and verify_store_password(store_id, password):
+            role = "store_admin"
+        else:
             admin_login_limiter.record_failure(client_key)
-            raise HTTPException(status_code=401, detail="رمز مدیریت نادرست است.")
+            raise HTTPException(status_code=401, detail="شناسه فروشگاه یا رمز مدیریت نادرست است.")
 
         admin_login_limiter.clear(client_key)
-        token = create_admin_session_token(expected)
+        token = create_admin_session_token(expected, store_id=store_id, role=role)
         response.set_cookie(
             key=ADMIN_SESSION_COOKIE,
             value=token,
@@ -257,7 +315,7 @@ def web():
             samesite="strict",
             path="/admin",
         )
-        return {"ok": True, "expires_in": ADMIN_SESSION_TTL_SECONDS}
+        return {"ok": True, "expires_in": ADMIN_SESSION_TTL_SECONDS, "store_id": store_id, "role": role}
 
     @web_app.post("/admin/logout")
     async def admin_logout(response: Response):
@@ -270,11 +328,82 @@ def web():
         )
         return {"ok": True}
 
-    def require_admin(request: Request):
-        expected = os.environ.get("ADMIN_PASSWORD", "")
-        token = request.cookies.get(ADMIN_SESSION_COOKIE, "")
-        if not verify_admin_session_token(token, expected):
+    def require_admin(request: Request, *, owner_only=False):
+        # Reload the shared volume first so deactivation/credential state is current.
+        product_volume.reload()
+        session = read_admin_session_token(
+            request.cookies.get(ADMIN_SESSION_COOKIE, ""),
+            os.environ.get("ADMIN_PASSWORD", ""),
+        )
+        if session is None:
             raise HTTPException(status_code=401, detail="نشست مدیریت معتبر نیست؛ دوباره وارد شو.")
+        store_id = session["store_id"]
+        record = get_store(store_id, include_inactive=True)
+        if store_id != "default" and record is None:
+            raise HTTPException(status_code=401, detail="فروشگاه نشست مدیریت معتبر نیست.")
+        if session["role"] == "store_admin" and not is_store_active(store_id):
+            raise HTTPException(status_code=401, detail="این فروشگاه غیرفعال شده است.")
+        if owner_only and session["role"] != "owner":
+            raise HTTPException(status_code=403, detail="این عملیات فقط برای مدیر اصلی مجاز است.")
+        request.state.admin_session = session
+        return session
+
+    @web_app.get("/admin/session")
+    async def admin_session(request: Request):
+        session = require_admin(request)
+        record = get_store(session["store_id"], include_inactive=True)
+        return {
+            "store_id": session["store_id"],
+            "role": session["role"],
+            "store_name": (record or {}).get("name", "فروشگاه اصلی"),
+        }
+
+    @web_app.get("/admin/stores")
+    async def admin_list_stores(request: Request):
+        require_admin(request, owner_only=True)
+        return {"stores": [
+            {"store_id": "default", "name": "فروشگاه اصلی", "active": True, "created_at": None},
+            *list_stores(include_inactive=True),
+        ]}
+
+    @web_app.post("/admin/stores")
+    async def admin_create_store(request: Request):
+        require_admin(request, owner_only=True)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise ValueError("محتوای درخواست نامعتبر است.")
+            record = create_store(payload.get("store_id"), payload.get("name"), payload.get("password"))
+            product_volume.commit()
+            return {"store": record}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @web_app.patch("/admin/stores/{store_id}")
+    async def admin_update_store(store_id: str, request: Request):
+        require_admin(request, owner_only=True)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("active"), bool):
+                raise ValueError("درخواست باید فیلد فعال‌بودن را مشخص کند.")
+            record = set_store_active(store_id, payload["active"])
+            product_volume.commit()
+            return {"store": record}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @web_app.put("/admin/stores/{store_id}/password")
+    async def admin_reset_store_password(store_id: str, request: Request):
+        require_admin(request, owner_only=True)
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise ValueError("محتوای درخواست نامعتبر است.")
+            record = reset_store_password(store_id, payload.get("password"))
+            product_volume.commit()
+            return {"store": record}
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     def commit_volume():
         product_volume.commit()
