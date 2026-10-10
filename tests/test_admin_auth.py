@@ -85,5 +85,30 @@ class AdminAuthTests(unittest.TestCase):
         self.assertTrue(limiter.is_allowed("192.0.2.4", now=2))
 
 
+    def test_session_claims_bind_token_to_store_and_role(self):
+        now = 1_800_000_000
+        token = create_admin_session_token(
+            "test-secret", store_id="shop-02", role="store_admin", now=now
+        )
+        from admin_auth import read_admin_session_token
+        self.assertEqual(
+            read_admin_session_token(token, "test-secret", now=now),
+            {"store_id": "shop-02", "role": "store_admin", "expires_at": now + ADMIN_SESSION_TTL_SECONDS},
+        )
+        self.assertFalse(verify_admin_session_token(token, "other-secret", now=now))
+
+    def test_session_store_or_role_cannot_be_tampered(self):
+        now = 1_800_000_000
+        token = create_admin_session_token(
+            "test-secret", store_id="shop-02", role="store_admin", now=now
+        )
+        parts = token.split(".")
+        parts[3] = "shop-03"
+        from admin_auth import read_admin_session_token
+        self.assertIsNone(read_admin_session_token(".".join(parts), "test-secret", now=now))
+        parts = token.split(".")
+        parts[2] = "owner"
+        self.assertIsNone(read_admin_session_token(".".join(parts), "test-secret", now=now))
+
 if __name__ == "__main__":
     unittest.main()
