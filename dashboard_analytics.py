@@ -1,17 +1,11 @@
 """Pure sales and inventory analytics used by the admin dashboard."""
-import unicodedata
+from datetime import datetime, timedelta, timezone
 
 from customer_analytics import normalize_phone_key
-from datetime import datetime, timedelta, timezone
 
 
 SOLD_STATUSES = {"confirmed", "shipped"}
 STATUS_ORDER = ("pending", "confirmed", "shipped", "cancelled")
-
-
-def _normal(value):
-    value = unicodedata.normalize("NFKC", str(value or "")).casefold().strip()
-    return " ".join(value.split())
 
 
 def _integer(value, default=0):
