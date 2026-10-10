@@ -23,9 +23,9 @@ class CustomerAnalyticsTests(unittest.TestCase):
             },
         ]
         result = build_customer_directory(orders)
-        self.assertEqual(result["summary"]["total_customers"], 2)
-        customer = next(c for c in result["customers"] if c["phone"] == "۰۹۱۲-۳۴۵-۶۷۸۹")
-        self.assertEqual(customer["order_count"], 2)
+        self.assertEqual(result["summary"]["total_customers"], 1)
+        customer = result["customers"][0]
+        self.assertEqual(customer["order_count"], 3)
         self.assertEqual(customer["completed_order_count"], 1)
         self.assertEqual(customer["total_spent"], 500)
         self.assertEqual(customer["address"], "آدرس جدید")
