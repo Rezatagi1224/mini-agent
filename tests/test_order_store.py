@@ -144,6 +144,30 @@ class OrderStoreSafetyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ابتدا پرداخت"):
             order_store.update_order_payment_status(order["id"], "refunded")
 
+    def test_corrupt_product_catalog_blocks_status_change_without_overwriting_files(self):
+        order = self.make_order(quantity=1)
+        original_orders = self.orders_file.read_text(encoding="utf-8")
+        original_products = "{bad json"
+        self.products_file.write_text(original_products, encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "کاتالوگ قابل خواندن نیست"):
+            order_store.update_order_status(order["id"], "cancelled")
+
+        self.assertEqual(self.orders_file.read_text(encoding="utf-8"), original_orders)
+        self.assertEqual(self.products_file.read_text(encoding="utf-8"), original_products)
+
+    def test_invalid_product_catalog_shape_blocks_status_change(self):
+        order = self.make_order(quantity=1)
+        original_orders = self.orders_file.read_text(encoding="utf-8")
+        original_products = json.dumps({"not": "a list"})
+        self.products_file.write_text(original_products, encoding="utf-8")
+
+        with self.assertRaisesRegex(RuntimeError, "ساختار فایل کاتالوگ نامعتبر است"):
+            order_store.update_order_status(order["id"], "cancelled")
+
+        self.assertEqual(self.orders_file.read_text(encoding="utf-8"), original_orders)
+        self.assertEqual(self.products_file.read_text(encoding="utf-8"), original_products)
+
     def test_invalid_contact_and_quantity_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "شماره تماس معتبر نیست"):
             order_store.create_order(
