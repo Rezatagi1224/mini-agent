@@ -22,6 +22,13 @@ A Persian-language AI sales assistant for a clothing store, with catalog, invent
 - Conversations inactive for more than 30 days are ignored and removed when normal app requests run cleanup.
 - Session history currently follows the same browser profile. Cross-device customer recognition is a separate CRM step and is not inferred from a visitor's name.
 
+## Admin authentication
+
+- Set a long, unique `ADMIN_PASSWORD` in the Modal Secret named `openrouter-secret`. If it is missing, admin API access fails closed.
+- After a successful `POST /admin/login`, the server issues a signed session cookie that expires after eight hours. The cookie is `HttpOnly`, `Secure`, `SameSite=Strict`, and scoped to `/admin`.
+- The admin password is not saved in browser `sessionStorage` and is not sent with every admin API request. Logging out clears the cookie; changing `ADMIN_PASSWORD` invalidates existing sessions.
+- Admin pages are still served publicly, but product, order, expense, dashboard, and customer data APIs require a valid admin session. Keep the password private and use the app over HTTPS.
+
 ## Deploy
 
 Pushes to `main` run the unit tests and then deploy `modal_app.py` to Modal. Modal secrets and access tokens must be stored in Modal/GitHub Secrets, not in source code.
