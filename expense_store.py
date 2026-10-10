@@ -12,9 +12,12 @@ def load_expenses():
         return []
     try:
         data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (OSError, json.JSONDecodeError):
-        return []
+    except (OSError, json.JSONDecodeError) as exc:
+        # Do not report a broken expense ledger as zero expenses.
+        raise RuntimeError("فهرست هزینه‌ها قابل خواندن نیست؛ فایل داده را بررسی کن.") from exc
+    if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+        raise RuntimeError("ساختار فایل هزینه‌ها نامعتبر است؛ از نوشتن روی آن خودداری شد.")
+    return data
 
 
 def _save_expenses(expenses):
