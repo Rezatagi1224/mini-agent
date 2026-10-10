@@ -125,7 +125,7 @@ def check_stock(product_name: str, size: str = "", color: str = "") -> str:
 
 @function_tool
 def recommend_products(occasion: str = "", budget: float = 0, size: str = "", style: str = "", color: str = "") -> str:
-    """Recommend products using verified catalog details and conservative stock checks.
+    """Recommend products with soft relevance ranking and strict size/color/budget constraints.
 
     Args:
         occasion: Occasion, such as everyday, work, or party.
@@ -138,15 +138,22 @@ def recommend_products(occasion: str = "", budget: float = 0, size: str = "", st
     if not products:
         return "برای پیشنهاد واقعی، ابتدا محصولات و مشخصات تأییدشده را در پنل ثبت کن."
 
+    def relevance(text, preference):
+        preference = _normalize(preference)
+        text = _normalize(text)
+        if not preference:
+            return 0
+        if preference in text:
+            return 3
+        tokens = [token for token in preference.split() if len(token) > 1]
+        return sum(1 for token in tokens if token in text)
+
     matches = []
     for product in products:
         if not isinstance(product, dict):
             continue
-        searchable = _product_text(product) + " " + str(product.get("occasion", ""))
-        if occasion and not _contains(searchable, occasion):
-            continue
-        if style and not _contains(searchable, style):
-            continue
+        # Size, color, and budget are hard constraints; style and occasion
+        # are ranking signals because catalog descriptions may use synonyms.
         if size and not any(_normalize(size) == _normalize(s) for s in product.get("sizes", [])):
             continue
         if color and not any(_normalize(color) == _normalize(c) for c in product.get("colors", [])):
@@ -157,27 +164,46 @@ def recommend_products(occasion: str = "", budget: float = 0, size: str = "", st
             or price < 0 or price > budget
         ):
             continue
+
         inventory = stock_status(product, size=size, color=color)
         if inventory["status"] == "out_of_stock":
             continue
-        matches.append((product, inventory))
+
+        searchable = " ".join([
+            _product_text(product),
+            str(product.get("occasion", "")),
+            str(product.get("fit", "")),
+            str(product.get("style", "")),
+        ])
+        score = relevance(searchable, occasion) + relevance(searchable, style)
+        matches.append((product, inventory, score))
 
     if not matches:
-        return ("محصولی با این شرایط و موجودی ثبت‌شدهٔ قابل استفاده پیدا نشد. "
-                "می‌توانی سایز، رنگ، سبک یا بودجه را تغییر بدهی؛ موجودی ثبت‌نشده هم باید توسط فروشگاه بررسی شود.")
+        return ("محصولی با موجودی قابل استفاده و مطابق محدودیت‌های سایز، رنگ و بودجه پیدا نشد. "
+                "می‌توانی یکی از این محدودیت‌ها را تغییر بدهی؛ موجودی ثبت‌نشده باید توسط فروشگاه بررسی شود.")
 
-    matches.sort(key=lambda pair: (
-        pair[1]["status"] != "available",
-        -(pair[1]["quantity"] or 0),
-        str(pair[0].get("name", "")),
+    has_soft_preferences = bool(occasion.strip() or style.strip())
+    relevant_matches = [item for item in matches if item[2] > 0]
+    note = ""
+    if has_soft_preferences and relevant_matches:
+        matches = relevant_matches
+    elif has_soft_preferences:
+        note = "تطابق دقیق با سبک یا مناسبت در اطلاعات کاتالوگ پیدا نشد؛ گزینه‌های زیر فقط با محدودیت‌های ثبت‌شده سازگارند. "
+
+    matches.sort(key=lambda item: (
+        item[1]["status"] != "available",
+        -item[2],
+        -(item[1]["quantity"] or 0),
+        str(item[0].get("name", "")),
     ))
-    return "\n".join(
+    results = [
         f"- {product.get('name', 'نامشخص')} | قیمت: {_format_price(product)} | "
         f"سایزها: {', '.join(map(str, product.get('sizes', []))) or 'ثبت نشده'} | "
         f"رنگ‌ها: {', '.join(map(str, product.get('colors', []))) or 'ثبت نشده'} | "
         f"{stock_message(product, size=size, color=color, status=inventory)}"
-        for product, inventory in matches[:5]
-    )
+        for product, inventory, _score in matches[:5]
+    ]
+    return note + "\n".join(results)
 
 
 @function_tool
