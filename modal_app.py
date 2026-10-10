@@ -92,6 +92,9 @@ def web():
             history = load_history(key)
             try:
                 answer = await handle_customer_message(message, history)
+                # Order tools write to /data; commit the product volume so orders
+                # created by the agent survive container changes and later requests.
+                product_volume.commit()
             except Exception:
                 raise HTTPException(
                     status_code=502,
@@ -161,7 +164,9 @@ def web():
                 try:
                     history = load_history(key)
                     answer = await handle_customer_message(text, history)
-                    await send_instagram_text(sender_id, answer)
+                    # The agent may have created an order in /data. Persist it before
+                    # attempting the outbound reply to avoid losing a successful order.
+                    product_volume.commit()
                     save_history(
                         key,
                         history + [
@@ -171,14 +176,23 @@ def web():
                     )
                     mark_message_processed(key, message_id)
                     conversation_volume.commit()
-                    processed += 1
                 except Exception:
-                    # Let Meta retry after transient model/API failures.
+                    # Failures before the order/reply result is committed can be retried.
                     release_message(key, message_id)
                     conversation_volume.commit()
                     raise HTTPException(
                         status_code=502,
                         detail="پردازش پیام اینستاگرام ناموفق بود؛ ارسال‌کننده می‌تواند دوباره تلاش کند.",
+                    )
+                try:
+                    await send_instagram_text(sender_id, answer)
+                    processed += 1
+                except Exception:
+                    # The message is already marked done. Do not re-run the agent and
+                    # accidentally create a duplicate order just because sending failed.
+                    raise HTTPException(
+                        status_code=502,
+                        detail="سفارش/پیام پردازش و ذخیره شد، اما ارسال پاسخ ناموفق بود.",
                     )
 
         return {"ok": True, "processed": processed}
