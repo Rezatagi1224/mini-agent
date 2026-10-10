@@ -7,7 +7,7 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils")
+    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics")
     .add_local_dir("frontend", "/root/frontend")
 )
 
@@ -30,6 +30,7 @@ def web():
     import asyncio
     from product_store import load_products, save_products, normalize_product
     from order_store import load_orders, update_order_status
+    from dashboard_analytics import build_dashboard
     from message_service import handle_customer_message
     from conversation_store import (
         load_history, save_history, prune_expired,
@@ -84,6 +85,7 @@ def web():
         lock = conversation_locks.setdefault(key, asyncio.Lock())
         async with lock:
             conversation_volume.reload()
+            product_volume.reload()
             prune_expired()
             history = load_history(key)
             try:
@@ -144,6 +146,7 @@ def web():
             lock = conversation_locks.setdefault(key, asyncio.Lock())
             async with lock:
                 conversation_volume.reload()
+                product_volume.reload()
                 removed = prune_expired()
                 if not claim_message(key, message_id):
                     if removed:
@@ -278,28 +281,7 @@ def web():
     async def dashboard(request: Request):
         require_admin(request)
         product_volume.reload()
-        orders = load_orders()
-        confirmed = [o for o in orders if o.get("status") in ("confirmed", "shipped")]
-        cancelled = [o for o in orders if o.get("status") == "cancelled"]
-        top = {}
-        for order in confirmed:
-            name = order.get("product_name", "")
-            top[name] = top.get(name, 0) + int(order.get("quantity", 0))
-        return {
-            "orders": {
-                "total": len(orders),
-                "pending": sum(o.get("status") == "pending" for o in orders),
-                "confirmed": len(confirmed),
-            },
-            "sales": {
-                "confirmed_amount": sum(o.get("total_price", 0) for o in confirmed),
-                "cancelled_amount": sum(o.get("total_price", 0) for o in cancelled),
-            },
-            "top_products": [
-                {"name": name, "quantity": quantity}
-                for name, quantity in sorted(top.items(), key=lambda item: item[1], reverse=True)[:5]
-            ],
-        }
+        return build_dashboard(load_orders(), load_products())
 
     @web_app.get("/style.css")
     async def style():
