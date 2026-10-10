@@ -9,9 +9,9 @@
 </style>
 </head>
 <body><div class="wrap">
-<header><div><h1>مدیریت سفارش‌ها</h1><p>سفارش‌ها ابتدا در انتظار تأیید هستند؛ پرداخت آنلاین فعال نیست.</p></div><div><a class="btn secondary" href="/admin">مدیریت محصولات</a> <a class="btn secondary" href="/admin/dashboard-page">داشبورد فروش</a> <a class="btn secondary" href="/admin/customers-page">مدیریت مشتریان</a> <button id="refresh">به‌روزرسانی</button></div></header>
+<header><div><h1>مدیریت سفارش‌ها</h1><p>سفارش‌ها ابتدا در انتظار تأیید هستند؛ دریافت/استرداد وجه را دستی ثبت کن.</p></div><div><a class="btn secondary" href="/admin">مدیریت محصولات</a> <a class="btn secondary" href="/admin/dashboard-page">داشبورد فروش</a> <a class="btn secondary" href="/admin/customers-page">مدیریت مشتریان</a> <button id="refresh">به‌روزرسانی</button></div></header>
 <section class="panel" id="login-panel"><h2>ورود مدیر</h2><p style="margin:8px 0 12px">از همان رمز پنل مدیریت استفاده کن.</p><div class="grid"><input id="password" type="password" placeholder="رمز مدیریت" autocomplete="current-password"><button id="login">ورود</button></div><div id="login-status" class="status"></div></section>
-<section class="panel hidden" id="orders-panel"><div class="table-wrap"><table><thead><tr><th>سفارش</th><th>مشتری و ارسال</th><th>کالا</th><th>مبلغ</th><th>وضعیت</th><th>تغییر وضعیت</th></tr></thead><tbody id="orders"></tbody></table></div><div id="orders-status" class="status"></div></section>
+<section class="panel hidden" id="orders-panel"><div class="table-wrap"><table><thead><tr><th>سفارش</th><th>مشتری و ارسال</th><th>کالا</th><th>مبلغ</th><th>وضعیت سفارش</th><th>وضعیت پرداخت</th><th>تغییر وضعیت سفارش</th></tr></thead><tbody id="orders"></tbody></table></div><div id="orders-status" class="status"></div></section>
 </div>
 <script>
 (() => {
@@ -23,18 +23,23 @@
  function show(id,msg){$(id).textContent=msg}
  async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{"Content-Type":"application/json","X-Admin-Password":password,...(opts.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||"درخواست ناموفق بود.");return d}
  async function load(){try{const d=await api("/admin/orders");orders=d.orders||[];$("login-panel").classList.add("hidden");$("orders-panel").classList.remove("hidden");render();show("login-status","")}catch(e){show("login-status",e.message)}}
- function render(){const tbody=$("orders");tbody.replaceChildren();if(!orders.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=6;td.textContent="هنوز سفارشی ثبت نشده است.";tr.appendChild(td);tbody.appendChild(tr);return}
+ function render(){const tbody=$("orders");tbody.replaceChildren();if(!orders.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=7;td.textContent="هنوز سفارشی ثبت نشده است.";tr.appendChild(td);tbody.appendChild(tr);return}
   for(const o of orders){const tr=document.createElement("tr");const values=[
    o.id+"\n"+new Date(o.created_at).toLocaleString("fa-IR"),
    o.customer_name+"\n"+o.phone+"\n"+o.address,
    o.product_name+"\nسایز: "+o.size+" | رنگ: "+o.color+"\nتعداد: "+o.quantity+"\n"+(o.stock_check==="confirmed"?"موجودی ثبت‌شده بررسی شده":"نیازمند بررسی موجودی")+"\n"+(o.inventory_deducted?"موجودی کسر شده":"موجودی هنوز کسر نشده"),
-   "هر عدد: "+money(o.unit_price)+"\nمجموع: "+money(o.total_price)+"\nپرداخت: انجام نشده",
+   "هر عدد: "+money(o.unit_price)+"\nمجموع: "+money(o.total_price),
    o.status_label||o.status
   ];for(const v of values){const td=document.createElement("td");td.style.whiteSpace="pre-line";td.textContent=v;tr.appendChild(td)}
+  const paymentTd=document.createElement("td"),paymentWrap=document.createElement("div"),paymentSelect=document.createElement("select"),paymentBtn=document.createElement("button");
+  paymentWrap.className="order-actions";
+  for(const [value,label] of [["unpaid","پرداخت‌نشده"],["paid","پرداخت‌شده"],["refunded","مستردشده"]]){const op=document.createElement("option");op.value=value;op.textContent=label;paymentSelect.appendChild(op)}
+  paymentSelect.value=o.payment_status||"unpaid";paymentBtn.textContent="ثبت پرداخت";paymentBtn.addEventListener("click",()=>updatePayment(o.id,paymentSelect.value,paymentBtn));paymentWrap.append(paymentSelect,paymentBtn);paymentTd.appendChild(paymentWrap);tr.appendChild(paymentTd);
   const td=document.createElement("td"),wrap=document.createElement("div"),select=document.createElement("select"),btn=document.createElement("button");wrap.className="order-actions";for(const [value,label] of statuses){const op=document.createElement("option");op.value=value;op.textContent=label;select.appendChild(op)}select.value=o.status||"pending";btn.textContent="ذخیره";btn.addEventListener("click",()=>update(o.id,select.value,btn));wrap.append(select,btn);td.appendChild(wrap);tr.appendChild(td);tbody.appendChild(tr)
   }
  }
  async function update(id,status,btn){btn.disabled=true;try{await api("/admin/orders/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({status})});await load();show("orders-status","وضعیت سفارش به‌روزرسانی شد.")}catch(e){show("orders-status",e.message)}finally{btn.disabled=false}}
+ async function updatePayment(id,payment_status,btn){btn.disabled=true;try{await api("/admin/orders/"+encodeURIComponent(id)+"/payment",{method:"PATCH",body:JSON.stringify({payment_status})});await load();show("orders-status","وضعیت پرداخت به‌روزرسانی شد.")}catch(e){show("orders-status",e.message)}finally{btn.disabled=false}}
  $("login").addEventListener("click",async()=>{password=$("password").value;await load();if(!$("orders-panel").classList.contains("hidden"))sessionStorage.setItem("mini_agent_admin_password",password)});
  $("password").addEventListener("keydown",e=>{if(e.key==="Enter")$("login").click()});
  $("refresh").addEventListener("click",async()=>{if(!password){$("login-panel").classList.remove("hidden");return}try{await load();show("orders-status","سفارش‌ها به‌روز شدند.")}catch(e){show("orders-status",e.message)}});
