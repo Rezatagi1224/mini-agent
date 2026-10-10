@@ -63,6 +63,8 @@ def _write_registry(registry):
 def _hash_password(password, salt=None, iterations=PASSWORD_ITERATIONS):
     if not isinstance(password, str) or len(password) < MIN_PASSWORD_LENGTH:
         raise ValueError(f"رمز مدیر فروشگاه باید دست‌کم {MIN_PASSWORD_LENGTH} نویسه باشد.")
+    if len(password) > 1024:
+        raise ValueError("رمز مدیر فروشگاه بیش از حد طولانی است.")
     salt_bytes = secrets.token_bytes(16) if salt is None else salt
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_bytes, iterations)
     return {
@@ -115,7 +117,7 @@ def is_store_active(store_id):
 
 def verify_store_password(store_id, password):
     """Authenticate only active, explicitly registered named stores."""
-    if store_id == "default" or not isinstance(password, str):
+    if store_id == "default" or not isinstance(password, str) or len(password) > 1024:
         return False
     record = _read_registry()["stores"].get(store_id)
     if not isinstance(record, dict) or record.get("active") is not True:
