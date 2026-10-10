@@ -41,7 +41,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
   <section class="panel"><h2>۵ محصول پرفروش</h2><div class="table-wrap"><table><thead><tr><th>محصول</th><th>تعداد فروخته‌شده</th></tr></thead><tbody id="top-products"></tbody></table></div></section>
   <section class="panel"><h2>ارزش سفارش‌های تأییدشده/ارسال‌شده — ۷ روز اخیر (UTC)</h2><div class="table-wrap"><table><thead><tr><th>تاریخ (UTC)</th><th>تعداد سفارش فروش</th><th>مبلغ</th></tr></thead><tbody id="daily-sales"></tbody></table></div></section>
   <section class="panel"><h2>هشدارهای موجودی</h2><p class="muted" id="inventory-summary"></p><ul class="alert-list" id="inventory-alerts"></ul></section>
-  <p class="muted">مبلغ این گزارش ارزش سفارش‌های تأییدشده و ارسال‌شده را نشان می‌دهد، نه دریافت وجه قطعی. چون وضعیت پرداخت جداگانه در سیستم ثبت نمی‌شود، از این ارقام نمی‌توان مبلغ وصول‌شده را نتیجه گرفت. روزها بر اساس UTC محاسبه می‌شوند.</p>
+  <p class="muted">وضعیت دریافت و استرداد وجه به‌صورت دستی در صفحه مدیریت سفارش‌ها ثبت می‌شود؛ این سامانه درگاه پرداخت نیست و تراکنش بانکی را مستقلاً تأیید نمی‌کند. سود خالص نیز به‌دلیل ثبت‌نشدن بهای خرید و هزینه‌ها محاسبه نمی‌شود. روزها بر اساس UTC محاسبه می‌شوند.</p>
 </section>
 </main>
 <script>
@@ -68,6 +68,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
         ["ارسال‌شده", data.orders.shipped],
         ["لغوشده", data.orders.cancelled],
         ["ارزش سفارش‌های تأییدشده/ارسال‌شده", money(data.sales.confirmed_amount)],
+        ["وجه دریافت‌شده (ثبت دستی)", money(data.sales.paid_amount)],
+        ["مبلغ دریافت‌نشده", money(data.sales.outstanding_amount)],
+        ["وجه مستردشده (ثبت دستی)", money(data.sales.refunded_amount)],
         ["ارزش سفارش‌های لغوشده", money(data.sales.cancelled_amount)],
         ["فروش ۷ روز اخیر", money(data.sales.last_7_days_amount)],
         ["میانگین مبلغ سفارش تأییدشده", money(data.sales.average_order_amount)],

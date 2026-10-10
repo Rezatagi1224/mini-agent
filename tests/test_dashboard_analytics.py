@@ -14,7 +14,7 @@ class DashboardAnalyticsTests(unittest.TestCase):
              "product_name": "پیراهن", "created_at": "2026-10-10T09:00:00Z"},
             {"id": "2", "status": "confirmed", "phone": "0912 345 6789", "total_price": 200, "quantity": 2,
              "product_name": "پیراهن", "created_at": "2026-10-10T10:00:00Z"},
-            {"id": "3", "status": "shipped", "phone": "+98 9123456789", "total_price": 300, "quantity": 3,
+            {"id": "3", "status": "shipped", "payment_status": "paid", "phone": "+98 9123456789", "total_price": 300, "quantity": 3,
              "product_name": "پیراهن", "created_at": "2026-10-09T10:00:00Z"},
             {"id": "4", "status": "cancelled", "phone": "0935", "total_price": 50, "quantity": 1,
              "product_name": "تی‌شرت", "created_at": "2026-10-10T10:00:00Z"},
@@ -29,6 +29,9 @@ class DashboardAnalyticsTests(unittest.TestCase):
         self.assertEqual(result["orders"]["cancelled"], 1)
         self.assertEqual(result["orders"]["confirmed_and_shipped"], 3)
         self.assertEqual(result["sales"]["confirmed_amount"], 1200)
+        self.assertEqual(result["sales"]["paid_amount"], 300)
+        self.assertEqual(result["sales"]["outstanding_amount"], 900)
+        self.assertEqual(result["sales"]["refunded_amount"], 0)
         self.assertEqual(result["sales"]["cancelled_amount"], 50)
         self.assertEqual(result["sales"]["last_7_days_amount"], 500)
         self.assertEqual(result["sales"]["average_order_amount"], 400)

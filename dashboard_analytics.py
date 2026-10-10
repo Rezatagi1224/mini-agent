@@ -108,6 +108,9 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
 
     confirmed_amount = 0
     cancelled_amount = 0
+    paid_amount = 0
+    outstanding_amount = 0
+    refunded_amount = 0
     last_7_days_amount = 0
     for order in orders:
         status = order.get("status", "pending")
@@ -117,6 +120,10 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
         quantity = _integer(order.get("quantity"))
         if status in SOLD_STATUSES:
             confirmed_amount += amount
+            if order.get("payment_status", "unpaid") == "paid":
+                paid_amount += amount
+            else:
+                outstanding_amount += amount
             sold_orders.append(order)
             name = str(order.get("product_name") or "محصول بدون نام")
             top[name] = top.get(name, 0) + quantity
@@ -131,6 +138,8 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
                 last_7_days_amount += amount
         elif status == "cancelled":
             cancelled_amount += amount
+            if order.get("payment_status") == "refunded":
+                refunded_amount += amount
             cancelled_orders.append(order)
 
     settled = len(sold_orders) + len(cancelled_orders)
@@ -146,6 +155,9 @@ def build_dashboard(orders, products, now=None, low_stock_threshold=3):
         },
         "sales": {
             "confirmed_amount": confirmed_amount,
+            "paid_amount": paid_amount,
+            "outstanding_amount": outstanding_amount,
+            "refunded_amount": refunded_amount,
             "cancelled_amount": cancelled_amount,
             "last_7_days_amount": last_7_days_amount,
             "average_order_amount": average_order_amount,
