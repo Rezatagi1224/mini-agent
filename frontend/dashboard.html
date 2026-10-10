@@ -40,6 +40,18 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
   <div class="grid" id="metrics"></div>
   <section class="panel"><h2>۵ محصول پرفروش</h2><div class="table-wrap"><table><thead><tr><th>محصول</th><th>تعداد فروخته‌شده</th></tr></thead><tbody id="top-products"></tbody></table></div></section>
   <section class="panel"><h2>ارزش سفارش‌های تأییدشده/ارسال‌شده — ۷ روز اخیر (UTC)</h2><div class="table-wrap"><table><thead><tr><th>تاریخ (UTC)</th><th>تعداد سفارش فروش</th><th>مبلغ</th></tr></thead><tbody id="daily-sales"></tbody></table></div></section>
+  <section class="panel">
+    <h2>ثبت هزینه فروشگاه</h2>
+    <p class="muted">هزینه‌های جاری مثل بسته‌بندی، ارسال پرداخت‌شده توسط فروشگاه یا سایر هزینه‌ها را ثبت کن. مبلغ‌ها باید به تومان باشند.</p>
+    <form id="expense-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">
+      <input id="expense-description" maxlength="160" placeholder="شرح هزینه" required>
+      <input id="expense-amount" type="number" min="1" step="1" placeholder="مبلغ (تومان)" required>
+      <input id="expense-category" maxlength="80" placeholder="دسته هزینه (اختیاری)">
+      <button type="submit" id="expense-submit">ثبت هزینه</button>
+    </form>
+    <div id="expense-status" class="status" role="status"></div>
+    <div class="table-wrap"><table><thead><tr><th>تاریخ</th><th>شرح</th><th>دسته</th><th>مبلغ</th><th>عملیات</th></tr></thead><tbody id="expenses"></tbody></table></div>
+  </section>
   <section class="panel"><h2>هشدارهای موجودی</h2><p class="muted" id="inventory-summary"></p><ul class="alert-list" id="inventory-alerts"></ul></section>
   <p class="muted">وضعیت دریافت و استرداد وجه به‌صورت دستی در صفحه مدیریت سفارش‌ها ثبت می‌شود؛ این سامانه درگاه پرداخت نیست و تراکنش بانکی را مستقلاً تأیید نمی‌کند. سود خالص نیز به‌دلیل ثبت‌نشدن بهای خرید و هزینه‌ها محاسبه نمی‌شود. روزها بر اساس UTC محاسبه می‌شوند.</p>
 </section>
@@ -71,6 +83,10 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
         ["وجه دریافت‌شده (ثبت دستی)", money(data.sales.paid_amount)],
         ["مبلغ دریافت‌نشده", money(data.sales.outstanding_amount)],
         ["وجه مستردشده (ثبت دستی)", money(data.sales.refunded_amount)],
+        ["سود ناخالص ثبت‌شده", money(data.sales.gross_profit_recorded)],
+        ["هزینه‌های ثبت‌شده", money(data.sales.recorded_expenses)],
+        ["سود پس از هزینه‌های ثبت‌شده", money(data.sales.net_profit_recorded)],
+        ["سفارش‌های بدون بهای خرید", Number(data.sales.orders_missing_cost || 0).toLocaleString("fa-IR")],
         ["ارزش سفارش‌های لغوشده", money(data.sales.cancelled_amount)],
         ["فروش ۷ روز اخیر", money(data.sales.last_7_days_amount)],
         ["میانگین مبلغ سفارش تأییدشده", money(data.sales.average_order_amount)],
@@ -124,13 +140,43 @@ table{width:100%;border-collapse:collapse}th,td{text-align:right;padding:11px;bo
           const li = document.createElement("li"); li.textContent = message; alerts.appendChild(li);
         }
       }
-      $("status").textContent = "";
+      $("status").textContent = data.sales.profit_complete ? "" : "هشدار: برای بعضی سفارش‌های تکمیل‌شده بهای خرید ثبت نشده است؛ سود نمایش‌داده‌شده کامل نیست.";
+      await loadExpenses();
     } catch (error) {
       $("status").textContent = error.message;
       $("report-panel").hidden = true;
       $("login-panel").hidden = false;
     } finally { $("load-btn").disabled = false; }
   }
+  async function loadExpenses(){
+    const body=$("expenses"); body.replaceChildren();
+    try{
+      const response=await fetch("/admin/expenses",{headers:{"X-Admin-Password":password}});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.detail||"دریافت هزینه‌ها ناموفق بود.");
+      for(const item of (data.expenses||[])){
+        const tr=document.createElement("tr");
+        for(const value of [new Date(item.created_at).toLocaleDateString("fa-IR"),item.description,item.category||"—",money(item.amount)]){
+          const td=document.createElement("td");td.textContent=value;tr.appendChild(td);
+        }
+        const td=document.createElement("td"),btn=document.createElement("button");btn.textContent="حذف";btn.addEventListener("click",async()=>{
+          if(!confirm("این هزینه از گزارش حذف شود؟"))return;
+          const r=await fetch("/admin/expenses/"+encodeURIComponent(item.id),{method:"DELETE",headers:{"X-Admin-Password":password}});
+          if(!r.ok){const e=await r.json().catch(()=>({}));$("expense-status").textContent=e.detail||"حذف هزینه ناموفق بود.";return;}
+          await loadExpenses();await load();
+        });td.appendChild(btn);tr.appendChild(td);body.appendChild(tr);
+      }
+      if(!(data.expenses||[]).length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=5;td.textContent="هزینه‌ای ثبت نشده است.";tr.appendChild(td);body.appendChild(tr);}
+    }catch(e){$("expense-status").textContent=e.message;}
+  }
+  $("expense-form").addEventListener("submit",async event=>{
+    event.preventDefault();$("expense-submit").disabled=true;
+    try{
+      const response=await fetch("/admin/expenses",{method:"POST",headers:{"Content-Type":"application/json","X-Admin-Password":password},body:JSON.stringify({description:$("expense-description").value.trim(),amount:$("expense-amount").value,category:$("expense-category").value.trim()})});
+      const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.detail||"ثبت هزینه ناموفق بود.");
+      $("expense-form").reset();$("expense-status").textContent="هزینه ثبت شد.";await loadExpenses();await load();
+    }catch(e){$("expense-status").textContent=e.message;}finally{$("expense-submit").disabled=false;}
+  });
   $("login-form").addEventListener("submit", load);
   if (password) { $("pass").value = password; load(); }
 })();
