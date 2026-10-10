@@ -58,9 +58,13 @@ def _load_products_file():
         return []
     try:
         data = json.loads(PRODUCTS_FILE.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (OSError, json.JSONDecodeError):
-        return []
+    except (OSError, json.JSONDecodeError) as exc:
+        # Do not treat a broken catalog as empty: a status change could then
+        # proceed without validating the inventory file.
+        raise RuntimeError("کاتالوگ قابل خواندن نیست؛ فایل داده را بررسی کن.") from exc
+    if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+        raise RuntimeError("ساختار فایل کاتالوگ نامعتبر است؛ از نوشتن روی آن خودداری شد.")
+    return data
 
 
 def _save_products_file(products):
