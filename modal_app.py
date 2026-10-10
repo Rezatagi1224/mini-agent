@@ -183,41 +183,55 @@ def web():
             sender_id = item.get("sender_id", "")
             message_id = item.get("message_id", "")
             text = item.get("text", "").strip()
-            # Meta message IDs are required for safe retry/deduplication.
             if not sender_id or not message_id or not text:
                 continue
 
-            key = "instagram:" + sender_id
+            product_volume.reload()
+            try:
+                account = resolve_instagram_account(item.get("recipient_id"))
+            except RuntimeError:
+                raise HTTPException(status_code=503, detail="تنظیمات حساب‌های اینستاگرام نامعتبر است.")
+            # In multi-account mode, unknown Instagram accounts must never fall back
+            # to the default shop. The single-account legacy config maps to default.
+            if account is None:
+                continue
+            store_id = account["store_id"]
+            if not is_store_active(store_id):
+                continue
+            if store_id != "default" and get_store(store_id, include_inactive=True) is None:
+                continue
+
+            key = "instagram:" + sender_id if store_id == "default" else "instagram:" + store_id + ":" + sender_id
             lock = conversation_locks.setdefault(key, asyncio.Lock())
             async with lock:
                 conversation_volume.reload()
                 product_volume.reload()
+                if not is_store_active(store_id):
+                    continue
                 removed = prune_expired()
                 if not claim_message(key, message_id):
                     if removed:
                         conversation_volume.commit()
                     continue
 
-                # Persist a short processing lease before invoking the model so that
-                # webhook retries do not trigger simultaneous duplicate replies.
+                # Save the processing lease first so webhook retries do not run
+                # a second agent request for the same incoming message.
                 conversation_volume.commit()
                 try:
                     history = load_history(key)
-                    answer = await handle_customer_message(text, history)
-                    # The agent may have created an order in /data. Persist it before
-                    # attempting the outbound reply to avoid losing a successful order.
-                    product_volume.commit()
-                    save_history(
-                        key,
-                        history + [
-                            {"role": "user", "content": text},
-                            {"role": "assistant", "content": answer},
-                        ],
-                    )
-                    mark_message_processed(key, message_id)
-                    conversation_volume.commit()
+                    with use_store(store_id):
+                        answer = await handle_customer_message(text, history)
+                        product_volume.commit()
+                        save_history(
+                            key,
+                            history + [
+                                {"role": "user", "content": text},
+                                {"role": "assistant", "content": answer},
+                            ],
+                        )
+                        mark_message_processed(key, message_id)
+                        conversation_volume.commit()
                 except Exception:
-                    # Failures before the order/reply result is committed can be retried.
                     release_message(key, message_id)
                     conversation_volume.commit()
                     raise HTTPException(
@@ -225,14 +239,17 @@ def web():
                         detail="پردازش پیام اینستاگرام ناموفق بود؛ ارسال‌کننده می‌تواند دوباره تلاش کند.",
                     )
                 try:
-                    await send_instagram_text(sender_id, answer)
+                    await send_instagram_text(
+                        sender_id,
+                        answer,
+                        account_id=account["account_id"],
+                        access_token=account["access_token"],
+                    )
                     processed += 1
                 except Exception:
-                    # The message is already marked done. Do not re-run the agent and
-                    # accidentally create a duplicate order just because sending failed.
                     raise HTTPException(
                         status_code=502,
-                        detail="سفارش/پیام پردازش و ذخیره شد، اما ارسال پاسخ ناموفق بود.",
+                        detail="پیام پردازش و ذخیره شد، اما ارسال پاسخ ناموفق بود.",
                     )
 
         return {"ok": True, "processed": processed}
