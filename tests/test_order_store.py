@@ -50,6 +50,20 @@ class OrderStoreSafetyTests(unittest.TestCase):
             quantity=quantity,
         )
 
+    def test_corrupt_order_ledger_blocks_new_order_without_overwriting_file(self):
+        original = "{bad json"
+        self.orders_file.write_text(original, encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "قابل خواندن نیست"):
+            self.make_order(quantity=1)
+        self.assertEqual(self.orders_file.read_text(encoding="utf-8"), original)
+
+    def test_invalid_order_ledger_shape_is_rejected(self):
+        original = json.dumps({"not": "a list"})
+        self.orders_file.write_text(original, encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "ساختار"):
+            order_store.load_orders()
+        self.assertEqual(self.orders_file.read_text(encoding="utf-8"), original)
+
     def test_order_starts_pending_and_does_not_deduct_stock(self):
         order = self.make_order(quantity=2)
         self.assertEqual(order["status"], "pending")
