@@ -7,7 +7,7 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "expense_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics", "customer_analytics")
+    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "expense_store", "message_service", "instagram_channel", "conversation_store", "inventory_utils", "dashboard_analytics", "customer_analytics", "admin_auth")
     .add_local_dir("frontend", "/root/frontend")
 )
 
@@ -24,7 +24,7 @@ conversation_volume = modal.Volume.from_name("mini-agent-conversation-data", cre
 )
 @modal.asgi_app()
 def web():
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import FastAPI, HTTPException, Request, Response
     from fastapi.responses import FileResponse, PlainTextResponse
     from uuid import UUID
     import asyncio
@@ -33,6 +33,13 @@ def web():
     from dashboard_analytics import build_dashboard
     from expense_store import load_expenses, create_expense, delete_expense
     from customer_analytics import build_customer_directory
+    from admin_auth import (
+        ADMIN_SESSION_COOKIE,
+        ADMIN_SESSION_TTL_SECONDS,
+        create_admin_session_token,
+        verify_admin_password,
+        verify_admin_session_token,
+    )
     from message_service import handle_customer_message
     from conversation_store import (
         load_history, save_history, prune_expired,
@@ -217,11 +224,45 @@ def web():
     async def customers_page():
         return FileResponse("/root/frontend/customers.html")
 
-    def require_admin(request: Request):
-        import hmac
+    @web_app.post("/admin/login")
+    async def admin_login(request: Request, response: Response):
+        try:
+            payload = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="درخواست ورود نامعتبر است.")
+        password = payload.get("password") if isinstance(payload, dict) else None
         expected = os.environ.get("ADMIN_PASSWORD", "")
-        if not expected or not hmac.compare_digest(request.headers.get("x-admin-password", ""), expected):
+        if not verify_admin_password(password, expected):
             raise HTTPException(status_code=401, detail="رمز مدیریت نادرست است.")
+
+        token = create_admin_session_token(expected)
+        response.set_cookie(
+            key=ADMIN_SESSION_COOKIE,
+            value=token,
+            max_age=ADMIN_SESSION_TTL_SECONDS,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+            path="/admin",
+        )
+        return {"ok": True, "expires_in": ADMIN_SESSION_TTL_SECONDS}
+
+    @web_app.post("/admin/logout")
+    async def admin_logout(response: Response):
+        response.delete_cookie(
+            key=ADMIN_SESSION_COOKIE,
+            path="/admin",
+            secure=True,
+            httponly=True,
+            samesite="strict",
+        )
+        return {"ok": True}
+
+    def require_admin(request: Request):
+        expected = os.environ.get("ADMIN_PASSWORD", "")
+        token = request.cookies.get(ADMIN_SESSION_COOKIE, "")
+        if not verify_admin_session_token(token, expected):
+            raise HTTPException(status_code=401, detail="نشست مدیریت معتبر نیست؛ دوباره وارد شو.")
 
     def commit_volume():
         product_volume.commit()
