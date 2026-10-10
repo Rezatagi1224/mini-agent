@@ -9,7 +9,12 @@ def _phone_key(value):
             digits.append(str(unicodedata.digit(character)))
         except (TypeError, ValueError):
             continue
-    return "".join(digits)
+    normalized = "".join(digits)
+    if normalized.startswith("0098") and len(normalized) == 14:
+        normalized = "0" + normalized[4:]
+    elif normalized.startswith("98") and len(normalized) == 12:
+        normalized = "0" + normalized[2:]
+    return normalized
 
 
 def build_customer_directory(orders):
