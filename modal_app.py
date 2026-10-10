@@ -7,24 +7,95 @@ import modal
 image = (
     modal.Image.debian_slim()
     .pip_install_from_requirements("requirements.txt")
-    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel")
+    .add_local_python_source("agent", "tools", "products", "product_store", "order_store", "message_service", "instagram_channel", "conversation_store")
     .add_local_dir("frontend", "/root/frontend")
 )
 
 app = modal.App("mini-agent")
 secret = modal.Secret.from_name("openrouter-secret")
 product_volume = modal.Volume.from_name("mini-agent-data", create_if_missing=True)
+conversation_volume = modal.Volume.from_name("mini-agent-conversation-data", create_if_missing=True)
 
 
-@app.function(image=image, secrets=[secret], volumes={"/data": product_volume})
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={"/data": product_volume, "/conversation-data": conversation_volume},
+)
 @modal.asgi_app()
 def web():
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import FileResponse
+    from uuid import UUID
+    import asyncio
     from product_store import load_products, save_products, normalize_product
     from order_store import load_orders, update_order_status
+    from message_service import handle_customer_message
+    from conversation_store import load_history, save_history, prune_expired
 
     web_app = FastAPI()
+    conversation_locks = {}
+
+    def web_conversation_key(value):
+        if not isinstance(value, str):
+            raise HTTPException(status_code=400, detail="شناسه مکالمه نامعتبر است.")
+        try:
+            parsed = UUID(value)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(status_code=400, detail="شناسه مکالمه نامعتبر است.")
+        if str(parsed) != value.lower():
+            raise HTTPException(status_code=400, detail="شناسه مکالمه نامعتبر است.")
+        return "web:" + str(parsed)
+
+    @web_app.get("/chat/history")
+    async def chat_history(conversation_id: str):
+        key = web_conversation_key(conversation_id)
+        conversation_volume.reload()
+        removed = prune_expired()
+        history = load_history(key)
+        if removed:
+            conversation_volume.commit()
+        return {"history": history}
+
+    @web_app.post("/chat")
+    async def chat(request: Request):
+        try:
+            payload = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="درخواست نامعتبر است.")
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="درخواست نامعتبر است.")
+
+        message = payload.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise HTTPException(status_code=400, detail="پیام خالی است.")
+        message = message.strip()
+        if len(message) > 6000:
+            raise HTTPException(status_code=400, detail="پیام نمی‌تواند بیشتر از ۶۰۰۰ نویسه باشد.")
+
+        key = web_conversation_key(payload.get("conversation_id"))
+        lock = conversation_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            conversation_volume.reload()
+            prune_expired()
+            history = load_history(key)
+            try:
+                answer = await handle_customer_message(message, history)
+            except Exception:
+                raise HTTPException(
+                    status_code=502,
+                    detail="فعلاً ارتباط با Agent برقرار نشد. دوباره تلاش کن.",
+                )
+
+            saved_history = save_history(
+                key,
+                history + [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": answer},
+                ],
+            )
+            conversation_volume.commit()
+            return {"answer": answer, "history": saved_history}
 
     @web_app.get("/")
     async def home():
