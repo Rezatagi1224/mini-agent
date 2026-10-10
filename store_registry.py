@@ -148,10 +148,25 @@ def create_store(store_id, name, password):
         "name": name.strip(),
         "active": True,
         "created_at": _now(),
+        "credential_version": 1,
         **credentials,
     }
     _write_registry(registry)
     return _public_record(store_id, registry["stores"][store_id])
+
+
+def get_store_auth_version(store_id):
+    """Return the current credential generation without exposing password hashes."""
+    if store_id == "default":
+        return 0
+    record = _read_registry()["stores"].get(store_id)
+    if not isinstance(record, dict):
+        return -1
+    try:
+        version = int(record.get("credential_version", 1))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("نسخهٔ اعتبارنامهٔ مدیر فروشگاه نامعتبر است.") from exc
+    return version if version >= 0 else -1
 
 
 def reset_store_password(store_id, password):
@@ -162,7 +177,14 @@ def reset_store_password(store_id, password):
     record = registry["stores"].get(store_id)
     if not isinstance(record, dict):
         raise ValueError("فروشگاه پیدا نشد.")
+    try:
+        current_version = int(record.get("credential_version", 1))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("نسخهٔ اعتبارنامهٔ مدیر فروشگاه نامعتبر است.") from exc
+    if current_version < 0:
+        raise RuntimeError("نسخهٔ اعتبارنامهٔ مدیر فروشگاه نامعتبر است.")
     record.update(_hash_password(password))
+    record["credential_version"] = current_version + 1
     _write_registry(registry)
     return _public_record(store_id, record)
 
