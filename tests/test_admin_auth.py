@@ -1,6 +1,7 @@
 import unittest
 
 from admin_auth import (
+    AdminLoginRateLimiter,
     ADMIN_SESSION_TTL_SECONDS,
     create_admin_session_token,
     verify_admin_password,
@@ -55,6 +56,33 @@ class AdminAuthTests(unittest.TestCase):
         self.assertFalse(
             verify_admin_session_token(token, "new-secret", now=1_800_000_000)
         )
+
+
+    def test_login_limiter_blocks_after_max_failures_and_reports_retry_after(self):
+        limiter = AdminLoginRateLimiter(max_attempts=3, window_seconds=60)
+        for timestamp in (100, 110, 120):
+            self.assertTrue(limiter.is_allowed("192.0.2.1", now=timestamp))
+            limiter.record_failure("192.0.2.1", now=timestamp)
+
+        self.assertFalse(limiter.is_allowed("192.0.2.1", now=121))
+        self.assertEqual(limiter.retry_after("192.0.2.1", now=121), 39)
+        self.assertTrue(limiter.is_allowed("192.0.2.1", now=160))
+
+    def test_login_limiter_clears_failures_after_success(self):
+        limiter = AdminLoginRateLimiter(max_attempts=2, window_seconds=60)
+        limiter.record_failure("192.0.2.2", now=10)
+        limiter.record_failure("192.0.2.2", now=11)
+        self.assertFalse(limiter.is_allowed("192.0.2.2", now=12))
+
+        limiter.clear("192.0.2.2")
+        self.assertTrue(limiter.is_allowed("192.0.2.2", now=12))
+        self.assertEqual(limiter.retry_after("192.0.2.2", now=12), 0)
+
+    def test_login_limiter_tracks_clients_separately_and_caps_client_keys(self):
+        limiter = AdminLoginRateLimiter(max_attempts=1, window_seconds=60, max_clients=1)
+        limiter.record_failure("192.0.2.3", now=1)
+        self.assertFalse(limiter.is_allowed("192.0.2.3", now=2))
+        self.assertTrue(limiter.is_allowed("192.0.2.4", now=2))
 
 
 if __name__ == "__main__":
