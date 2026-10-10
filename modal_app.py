@@ -44,7 +44,7 @@ def web():
     )
     from store_context import use_store, validate_store_id
     from store_registry import (
-        create_store, get_store, is_store_active, list_stores,
+        create_store, get_store, get_store_auth_version, is_store_active, list_stores,
         reset_store_password, set_store_active, verify_store_password,
     )
     from message_service import handle_customer_message
@@ -322,7 +322,13 @@ def web():
             raise HTTPException(status_code=401, detail="شناسه فروشگاه یا رمز مدیریت نادرست است.")
 
         admin_login_limiter.clear(client_key)
-        token = create_admin_session_token(expected, store_id=store_id, role=role)
+        credential_version = get_store_auth_version(store_id) if role == "store_admin" else 0
+        token = create_admin_session_token(
+            expected,
+            store_id=store_id,
+            role=role,
+            credential_version=credential_version,
+        )
         response.set_cookie(
             key=ADMIN_SESSION_COOKIE,
             value=token,
@@ -360,6 +366,11 @@ def web():
             raise HTTPException(status_code=401, detail="فروشگاه نشست مدیریت معتبر نیست.")
         if session["role"] == "store_admin" and not is_store_active(store_id):
             raise HTTPException(status_code=401, detail="این فروشگاه غیرفعال شده است.")
+        if (
+            session["role"] == "store_admin"
+            and session["credential_version"] != get_store_auth_version(store_id)
+        ):
+            raise HTTPException(status_code=401, detail="رمز مدیر فروشگاه تغییر کرده است؛ دوباره وارد شو.")
         if owner_only and session["role"] != "owner":
             raise HTTPException(status_code=403, detail="این عملیات فقط برای مدیر اصلی مجاز است.")
         request.state.admin_session = session
